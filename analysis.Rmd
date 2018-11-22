@@ -1,0 +1,26 @@
+---
+title: "boat movement analysis"
+author: "Tobias Schwoerer"
+date: "November 21, 2018"
+output: html_document
+---
+
+# Importing the geojson file containing the routes by respondent and then importing the survey data by respondent
+
+```{r}
+library(geojson)
+library(leaflet)
+
+routes <- geojsonio::geojson_read("D:/Dropbox/CURRENT_PROJECTS/Boatmovements/Data/outputFinal.geojson", what = "sp")
+class(routes)
+
+answers <- read.csv("D:/Dropbox/CURRENT_PROJECTS/Boatmovements/Data/Final_data_R_analysis/October22FINALdownload_clean_deIDed.csv")
+```
+
+```{r}
+leaflet(routes) %>%
+  addTiles() %>%
+  addPolylines() 
+
+
+```
