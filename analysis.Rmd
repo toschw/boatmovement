@@ -3,22 +3,45 @@ title: "boat movement analysis"
 author: "Tobias Schwoerer"
 date: "November 21, 2018"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 # Importing the geojson file containing the routes by respondent and then importing the survey data by respondent
 
 ```{r}
+library(jsonlite)
 library(geojson)
 library(leaflet)
-
-routes <- geojsonio::geojson_read("D:/Dropbox/CURRENT_PROJECTS/Boatmovements/Data/outputFinal.geojson", what = "sp")
+library(dplyr)
+library(geojsonio)
+#routes <- geojsonio::geojson_read("D:/Dropbox/CURRENT_PROJECTS/Boatmovements/Data/outputFinal.geojson", what = "sp")
+routes <- geojsonio::geojson_read("data/outputFinal.geojson", what = "sp")
+#routes <- system.file("examples", "bison.zip", package = "geojsonio")
 class(routes)
-
-answers <- read.csv("D:/Dropbox/CURRENT_PROJECTS/Boatmovements/Data/Final_data_R_analysis/October22FINALdownload_clean_deIDed.csv")
+#answers <- read.csv("D:/Dropbox/CURRENT_PROJECTS/Boatmovements/Data/Final_data_R_analysis/October22FINALdownload_clean_deIDed.csv")
+answers <- read.csv("data/October22FINALdownload_clean_deIDed.csv")
 ```
 
+#Writing answers into a Json file then combining the routes with the answers file by responseID
 ```{r}
-leaflet(routes) %>%
+# write survey answers as geojson
+geojson_write(answers, "data/answers.geojson")
+
+#validating this file as a true json file
+geojsonlint::geojson_lint("data/answers.geojson")
+
+answersJson <- geojson_read("data/answers.geojson", what = "sp")
+
+# combining json files
+files <- c("routes", "answersJson")
+jsonl <- lapply(files, function(f) fromJSON(file = f))
+jsonc <- toJSON(jsonl)
+write(jsonc, file = "jsonc")
+class(jsonc)
+
+#creating leaflet map
+leaflet(jsonc) %>%
   addTiles() %>%
   addPolylines() 
 
