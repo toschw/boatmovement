@@ -17,6 +17,10 @@ library(dplyr)
 library(geojsonio)
 #routes <- geojsonio::geojson_read("D:/Dropbox/CURRENT_PROJECTS/Boatmovements/Data/outputFinal.geojson", what = "sp")
 routes <- geojsonio::geojson_read("data/outputFinal.geojson", what = "sp")
+routes <- geojsonio::geojson_read("data/Boat_Survey_Nov_2018.json", what = "sp")
+
+geojsonlint::geojson_lint("data/Boat_Survey_Nov_2018.json.json")
+
 #routes <- system.file("examples", "bison.zip", package = "geojsonio")
 class(routes)
 #answers <- read.csv("D:/Dropbox/CURRENT_PROJECTS/Boatmovements/Data/Final_data_R_analysis/October22FINALdownload_clean_deIDed.csv")
