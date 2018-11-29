@@ -7,7 +7,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-# Importing the geojson file containing the routes by respondent and then importing the survey data by respondent
+# Importing the data files, visualizing all respondent boat tracks 
 
 ```{r}
 library(jsonlite)
@@ -15,24 +15,146 @@ library(geojson)
 library(leaflet)
 library(dplyr)
 library(geojsonio)
-#routes <- geojsonio::geojson_read("D:/Dropbox/CURRENT_PROJECTS/Boatmovements/Data/outputFinal.geojson", what = "sp")
-#routes <- geojsonio::geojson_read("data/outputFinal.geojson", what = "sp")
-#routes <- geojsonio::geojson_read("data/Boat_Survey_Nov_2018.json", what = "sp")
-data <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/map-data-joiner-output.geojson",what = "sp")
-#geojsonlint::geojson_lint("data/Boat_Survey_Nov_2018.json.json")
 
-#routes <- system.file("examples", "bison.zip", package = "geojsonio")
-class(data)
-answers <- read.csv("D:/Dropbox/DATA/2018_boat_survey/October22FINALdownload_clean_deIDed2.csv")
-#answers <- read.csv("data/October22FINALdownload_clean_deIDed.csv")
+#cleaned up features (tracks the respondents entered into the mapping tool)
+map <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/map.geojson",what = "sp")
+features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+
+#cleaned data associated with the survey answers of each respondent
+data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv")
+
+
+# the joined data and map output, joined these files using the python script
+mapdata <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/output.geojson",what = "sp")
+
+#creating leaflet map showing all routes
+leaflet(mapdata) %>%
+  addTiles() %>%
+  addPolylines() %>%
+  addProviderTiles(providers$Stamen.TerrainBackground)
 ```
 
-#Writing answers into a Json file then combining the routes with the answers file by responseID
- "python3 map-data-joiner.py October22FINALdownload_clean_deIDed2.csv Boats_survey_Nov_2018_2.geojson output.geojson" in the case of the files you sent over to me. The expected parameters are survey responses, GeoJSON for joining, and whatever name you'd like the output GeoJSON to use.
+
+#High priority TASKS
+1) need to convert the frequencies in numbers
+2) can I visualize the frequencies? 
+3) visualize out of state origin tracks
+
+
+
+# Low priority tasks
+3) Does a hex map make sense?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Integrating dynamic with static elements (Source: https://rstudio.github.io/leaflet/shiny.html)
 ```{r}
-library(reticulate)
-source_python("D:/Dropbox/DATA/2018_boat_survey/map-data-joiner.py", envir = parent.frame(), convert = TRUE) 
- 
+library(shiny)
+library(leaflet)
+library(RColorBrewer)
+
+ui <- bootstrapPage(
+  tags$style(type = "text/css", "html, body {width:100%;height:100%}"),
+  leafletOutput("map", width = "100%", height = "100%"),
+  absolutePanel(top = 10, right = 10,
+    checkboxInput("select","Show tracks of",
+      list(`boats operated outside Alaska before coming to Alaska` = list("NY", "NJ", "CT"),
+           `boats Operated only in Alaska in 2018` = list(""),
+           `all boats` = list("British Columbia","Washington","Kansas","Yukon Territories",""),
+                selected = ""
+           ),
+      
+        ),
+    checkboxInput("legend", "Show legend", TRUE)
+  )
+)
+
+```
+
+
+```{r}
+server <- function(input, output, session) {
+
+  # Reactive expression for the data subsetted to what the user selected
+  filteredData <- reactive({
+    mapdata[mapdata$freshOutside =="Yes",]
+  })
+
+  # This reactive expression represents the palette function,
+  # which changes as the user makes selections in UI.
+  colorpal <- reactive({
+    colorNumeric(input$colors, quakes$mag)
+  })
+
+  output$map <- renderLeaflet({
+    # Use leaflet() here, and only include aspects of the map that
+    # won't need to change dynamically (at least, not unless the
+    # entire map is being torn down and recreated).
+    leaflet(mapdata) %>% addTiles() %>%
+      fitBounds(~min(long), ~min(lat), ~max(long), ~max(lat))
+  })
+
+  # Incremental changes to the map (in this case, replacing the
+  # circles when a new color is chosen) should be performed in
+  # an observer. Each independent set of things that can change
+  # should be managed in its own observer.
+  observe({
+    pal <- colorpal()
+
+    leafletProxy("map", data = filteredData()) %>%
+      clearShapes() %>%
+      addCircles(radius = ~10^mag/10, weight = 1, color = "#777777",
+        fillColor = ~pal(mag), fillOpacity = 0.7, popup = ~paste(mag)
+      )
+  })
+
+  # Use a separate observer to recreate the legend as needed.
+  observe({
+    proxy <- leafletProxy("map", data = quakes)
+
+    # Remove any existing legend, and only if the legend is
+    # enabled, create a new one.
+    proxy %>% clearControls()
+    if (input$legend) {
+      pal <- colorpal()
+      proxy %>% addLegend(position = "bottomright",
+        pal = pal, values = ~mag
+      )
+    }
+  })
+}
+
+shinyApp(ui, server)
  
 ``` 
  
@@ -58,8 +180,3 @@ leaflet(data) %>%
   addPolylines() 
 ```
 
-#Analysis of other non-spatial survey answers
-```{r}
-
-
-```
