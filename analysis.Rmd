@@ -19,6 +19,11 @@ library(geojsonio)
 #cleaned up features (tracks the respondents entered into the mapping tool)
 map <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/map.geojson",what = "sp")
 features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+#renaming misspelled column
+names(features)[names(features)=="LenghtKM"] <- "km"
+
+
+freqCoding <- read.csv("reference_tables/freqCoding.csv", stringsAsFactors = FALSE)
 
 #cleaned data associated with the survey answers of each respondent
 data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv")
@@ -34,25 +39,78 @@ leaflet(mapdata) %>%
   addProviderTiles(providers$Stamen.TerrainBackground)
 ```
 
+#Calculating trip frequencies pre and post hypothetical elodea invasions of waterways used 
+```{r}
+#calculating pre elodea trip frequencies
+features2 <- features%>%
+  left_join(freqCoding,  by = c("trackFrequ"="Coding"))
+features2$freqPre <- rowMeans(features2[c("Lower","Upper")], na.rm=TRUE)
+#Renaming columns to specify fishing_region
+names(features2)[names(features2)=="Lower"] <- "LowerPre"
+names(features2)[names(features2)=="Upper"] <- "UpperPre"
+
+#Calculating post elodea trip frequencies
+features3 <- features2 %>%
+  left_join(freqCoding,  by = c("trackFre_1"="Coding"))
+features3$freqPost <- rowMeans(features3[c("Lower","Upper")], na.rm=TRUE)
+#Renaming columns 
+names(features3)[names(features3)=="Lower"] <- "LowerPost"
+```
+
+# Calculating annual cost of boating per route assumes average travel speed of 10 miles/h equal to 16km/h
+```{r}
+#calculating mean cost from the high and low cost per hour respondents reported
+#last argument excludes missing values
+features3$hCost <- rowMeans(features3[c("hCostHigh","hCostLow")], na.rm=TRUE)
+
+#dealing with outlier on cost
+features3$hCost[features3$hCost==20000] <- NA
+hist(features3$hCost, breaks=20)
+
+#dealing with outliers on km, setting frequency of trips pre if Up to 4 setting it to 1 if km >300
+features3$freqPre <- with(features3, ifelse(km>300 & trackFrequ=="Up to 4",1,freqPre))
+
+#dealing with ranks that are 0
+features3$rank <- with(features3, ifelse(rank==0, 1, rank)) 
+
+#dealing with missing values by first calculating the median then inserting missing values with the median
+medianCost <- median(features3$hCost, na.rm=TRUE)
+features3$hCost <- with(features3, ifelse(is.na(hCost), medianCost, hCost))
+
+#calculating the total annual cost per route
+features4 <- mutate(features3, YrCost = totalKm * hCost)
+
+#Creating descriptive stats tables
+Hmisc::describe(features4$hCost )
+Hmisc::describe(features4$YrCost)
+
+tableData <- dplyr::select(features4, "hCost", "totalKm", "km", "freqPre", "freqPost", "primaryPur")
+    
+stargazer::stargazer(tableData, digits=0,  out="tables/table1.txt")
+stargazer::stargazer(tableData, digits=0, type = "html", out="tables/table1.html")
+```
+
+#Table showing main purpose of route by mean ranking
+```{r}
+StatsByPur <- features4 %>%
+  dplyr::group_by(primaryPur)%>%
+  summarise(percentRoutes = n()/nrow(features4),
+            meanRank = mean(rank),
+            count = n())%>%
+  arrange(desc(count))
+  
+write.table(StatsByPur, file = "tables/table2.txt", sep = ",", quote = FALSE, row.names = F)
+
+```
+
 
 #High priority TASKS
-1) need to convert the frequencies in numbers
-2) can I visualize the frequencies? 
+
+2) can I visualize the frequencies on map? 
 3) visualize out of state origin tracks
-
-
 
 # Low priority tasks
 3) Does a hex map make sense?
-
-
-
-
-
-
-
-
-
 
 
 
