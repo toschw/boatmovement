@@ -15,10 +15,15 @@ library(geojson)
 library(leaflet)
 library(dplyr)
 library(geojsonio)
+library(tidyr)
 
 #cleaned up features (tracks the respondents entered into the mapping tool)
-map <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/map.geojson",what = "sp")
-features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+#map <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/map.geojson",what = "sp")
+map <- geojson_read("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/map.geojson", what = "sp")
+
+#features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+features <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+
 #renaming misspelled column
 names(features)[names(features)=="LenghtKM"] <- "km"
 
@@ -26,11 +31,12 @@ names(features)[names(features)=="LenghtKM"] <- "km"
 freqCoding <- read.csv("reference_tables/freqCoding.csv", stringsAsFactors = FALSE)
 
 #cleaned data associated with the survey answers of each respondent
-data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv")
-
+#data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
+data <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
 
 # the joined data and map output, joined these files using the python script
-mapdata <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/output.geojson",what = "sp")
+#mapdata <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/output.geojson",what = "sp")
+mapdata <- geojson_read("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/output.geojson",what = "sp")
 
 #creating leaflet map showing all routes
 leaflet(mapdata) %>%
@@ -55,9 +61,11 @@ features3 <- features2 %>%
 features3$freqPost <- rowMeans(features3[c("Lower","Upper")], na.rm=TRUE)
 #Renaming columns 
 names(features3)[names(features3)=="Lower"] <- "LowerPost"
+names(features3)[names(features3)=="Upper"] <- "UpperPost"
 ```
 
-# Calculating annual cost of boating per route assumes average travel speed of 10 miles/h equal to 16km/h
+#Outliers and missing data for features
+#Calculating annual cost of boating per route assumes average travel speed of 10 miles/h equal to 16km/h
 ```{r}
 #calculating mean cost from the high and low cost per hour respondents reported
 #last argument excludes missing values
@@ -73,22 +81,68 @@ features3$freqPre <- with(features3, ifelse(km>300 & trackFrequ=="Up to 4",1,fre
 #dealing with ranks that are 0
 features3$rank <- with(features3, ifelse(rank==0, 1, rank)) 
 
-#dealing with missing values by first calculating the median then inserting missing values with the median
+#dealing with missing values by first calculating the mediann cost per h then inserting missing values with the median
 medianCost <- median(features3$hCost, na.rm=TRUE)
 features3$hCost <- with(features3, ifelse(is.na(hCost), medianCost, hCost))
 
-#calculating the total annual cost per route
-features4 <- mutate(features3, YrCost = totalKm * hCost)
+#calculating the total km per route then annual cost per route
+features3$totalKmPre <- with(features3, km * freqPre)
+features3$totalKmPost <- with(features3, km * freqPost)
+features3$YrCostPre <- with(features3, totalKmPre * hCost)
+features3$YrCostPost <- with(features3, totalKmPost * hCost)
+
 
 #Creating descriptive stats tables
-Hmisc::describe(features4$hCost )
-Hmisc::describe(features4$YrCost)
+Hmisc::describe(features3$hCost )
+Hmisc::describe(features3$YrCostPre)
 
 tableData <- dplyr::select(features4, "hCost", "totalKm", "km", "freqPre", "freqPost", "primaryPur")
     
 stargazer::stargazer(tableData, digits=0,  out="tables/table1.txt")
 stargazer::stargazer(tableData, digits=0, type = "html", out="tables/table1.html")
 ```
+
+In all of the above results the commercials are mixed in with the personal trips
+# separating commercial from personal
+```{r}
+#getting rid of % sign in character string, then converting character to numeric, doing for percentCom and percentGov
+data2 <- data
+data2$percentCom <- gsub("[[:punct:]]", " ", data2$percentCom)
+data2$percentCom <- as.numeric(as.character(data2$percentCom))
+data2$percentCom <- with(data2, ifelse(is.na(percentCom),0,percentCom/100))
+data2$percentGov <- gsub("[[:punct:]]", " ", data2$percentGov)
+data2$percentGov <- as.numeric(as.character(data2$percentGov))
+data2$percentGov <- with(data2, ifelse(is.na(percentGov),0,percentGov/100))
+data2$percentPer <- with(data2, 1-percentGov-percentCom)
+
+#turning character to numeric for income variable
+incCoding <- read.csv("reference_tables/incCoding.csv", stringsAsFactors = FALSE)
+data3 <- data2%>%
+  dplyr::left_join(incCoding,  by = "persIncomeBtax")
+data3$Income <- as.numeric(as.character(data3$Income))
+
+#dealing with missing data on income
+#dealing with missing values by first calculating the median income then inserting missing values with the median
+medianIncome <- median(data3$Income, na.rm=TRUE)
+data3$Income <- with(data3, ifelse(is.na(Income), medianIncome, Income))
+
+#creating a selection of columns from data to join to features
+resInfo <- dplyr::select(data3, responseID, percentPer, percentCom, percentGov, Income, freshOutside, CleanDrainDry, operateFresh, operateMarine)
+
+features4 <- features3 %>%
+ dplyr::left_join(resInfo, by = "responseID")
+```
+
+# exploring some data
+```{r}
+
+
+plot(features4$Income, features4$YrCostPre)
+#has all types of operators mixed in
+
+```
+
+
 
 #Table showing main purpose of route by mean ranking
 ```{r}
