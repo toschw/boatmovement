@@ -16,6 +16,9 @@ library(leaflet)
 library(dplyr)
 library(geojsonio)
 library(tidyr)
+library(Hmisc)
+library(ggplot2)
+library(RColorBrewer)
 
 #cleaned up features (tracks the respondents entered into the mapping tool)
 #map <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/map.geojson",what = "sp")
@@ -32,7 +35,7 @@ freqCoding <- read.csv("reference_tables/freqCoding.csv", stringsAsFactors = FAL
 
 #cleaned data associated with the survey answers of each respondent
 #data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
-data <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
+#data <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
 
 # the joined data and map output, joined these files using the python script
 #mapdata <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/output.geojson",what = "sp")
@@ -51,7 +54,7 @@ leaflet(mapdata) %>%
 features2 <- features%>%
   left_join(freqCoding,  by = c("trackFrequ"="Coding"))
 features2$freqPre <- rowMeans(features2[c("Lower","Upper")], na.rm=TRUE)
-#Renaming columns to specify fishing_region
+#Renaming columns 
 names(features2)[names(features2)=="Lower"] <- "LowerPre"
 names(features2)[names(features2)=="Upper"] <- "UpperPre"
 
@@ -81,7 +84,7 @@ features3$freqPre <- with(features3, ifelse(km>300 & trackFrequ=="Up to 4",1,fre
 #dealing with ranks that are 0
 features3$rank <- with(features3, ifelse(rank==0, 1, rank)) 
 
-#dealing with missing values by first calculating the mediann cost per h then inserting missing values with the median
+#dealing with missing values by first calculating the median cost per h then inserting missing values with the median
 medianCost <- median(features3$hCost, na.rm=TRUE)
 features3$hCost <- with(features3, ifelse(is.na(hCost), medianCost, hCost))
 
@@ -90,20 +93,186 @@ features3$totalKmPre <- with(features3, km * freqPre)
 features3$totalKmPost <- with(features3, km * freqPost)
 features3$YrCostPre <- with(features3, totalKmPre * hCost)
 features3$YrCostPost <- with(features3, totalKmPost * hCost)
-
-
-#Creating descriptive stats tables
-Hmisc::describe(features3$hCost )
-Hmisc::describe(features3$YrCostPre)
-
-tableData <- dplyr::select(features4, "hCost", "totalKm", "km", "freqPre", "freqPost", "primaryPur")
-    
-stargazer::stargazer(tableData, digits=0,  out="tables/table1.txt")
-stargazer::stargazer(tableData, digits=0, type = "html", out="tables/table1.html")
 ```
 
+#cleaning up features further, missing data etc. 
+```{r}
+#getting rid of % sign in character string, then converting character to numeric, doing for percentCom and percentGov
+features4 <- features3 
+features4$percentCom <- gsub("[[:punct:]]", " ", features4$percentCom)
+features4$percentCom <- as.numeric(as.character(features4$percentCom))
+features4$percentCom <- with(features4, ifelse(is.na(percentCom),0,percentCom/100))
+features4$percentGov <- gsub("[[:punct:]]", " ", features4$percentGov)
+features4$percentGov <- as.numeric(as.character(features4$percentGov))
+features4$percentGov <- with(features4, ifelse(is.na(percentGov),0,percentGov/100))
+features4$percentPer <- with(features4, 1-percentGov-percentCom)
+
+#correcting wrong respondent entry on percentGov
+features4$percentGov <- with(features4, ifelse(percentPer<0,percentGov-percentCom,percentGov))
+features4$percentPer <- with(features4, 1-percentGov-percentCom)
+
+#renaming columns
+names(features4)[names(features4)=="CleanDrainDry"] <- "Clean"
+
+#turning character to numeric for income variable
+incCoding <- read.csv("reference_tables/incCoding.csv", stringsAsFactors = FALSE)
+features4 <- features4%>%
+  dplyr::left_join(incCoding,  by = "persIncomeBtax")
+features4$Income <- as.numeric(as.character(features4$Income))
+
+#dealing with missing data on income
+#dealing with missing values by first calculating the median income then inserting missing values with the median
+medianIncome <- median(features4$Income, na.rm=TRUE)
+features4$Income <- with(features4, ifelse(is.na(Income), medianIncome, Income))
+
+#dealing with questionable data on age and deleting entries coded "Not applicable"
+features4$age <- with(features4, ifelse(age==9 | age=="Not applicable",NA,age))
+features4$age <- as.numeric(as.character(features4$age))
+
+#coding respondents who did not respond to Clean Drain Dry question
+features4$Clean <- with(features4, ifelse(Clean=="", "Did not report", ifelse(Clean=="half the time","50% of the itme",ifelse(Clean=="Every time", "100% of the time",ifelse(Clean=="Never", "0% of the time", Clean)))))
+
+#dealine with miscoding
+features4$Clean <- with(features4, ifelse(Clean=="50% of the itme", "50% of the time",Clean))
+
+#turning character vectors into factors for Clean variable, for later when we need a nice legend for the plot
+Features4$Clean <- factor(features4$Clean, levels=c("100% of the time", "75% of the time", "50% of the time", "25% of the time", "0% of the time", "Did not report"), labels=c("100% of the time", "75% of the time", "50% of the time", "25% of the time", "0% of the time", "Did not report"))
+
+#cleaning up columns no longer needed
+features5 <- subset(features4, select = -c(trackFrequ, trackFre_1, IPAddress, operateType, persIncomeBtax, LowerPost, LowerPre, UpperPost, UpperPre))
+
+#Creating bins for age
+features5$ageBin <- with(features5, ifelse(age>20&age<=30,"21-30",ifelse(age>30&age<= 40,"31-40",ifelse(age>40&age<=50,"41-50", ifelse(age>50&age<=60,"51-60", ifelse(age>60&age<=70,"61-70", ifelse(age>70&age<=80, "71-80", "81 and over")))))))
+#turning ageBin into factor
+features5$ageBin <- factor(features5$ageBin, levels=c("21-30", "31-40", "41-50", "51-60", "61-70", "71-80","81 and over"), labels=c("21-30", "31-40", "41-50", "51-60", "61-70", "71-80","81 and over"))
+
+#creating subsets by operator type
+#creating variable for personal and commercial operators
+features5$type <- with(features5, ifelse(percentPer>0.5, "personal", ifelse(percentCom>0.5, "commercial", "government")))
+
+# creating subsets for each type of operator
+com <- subset(features5, type=="commercial")
+pers <- subset(features5, type=="personal")
+gov <- subset(features5, type=="government")
+```
+
+#Distance by personal operators by age
+
+
+
+
+
+# hourly and yearly operating cost statistics (distributions)
+```{r}
+resSum <- features5%>%
+  group_by(responseID, type)%>%
+  summarise(YrTravelCost = sum(YrCostPre))
+
+#Calculating descriptive stats for annual operating cost by operator type
+TCByType <- resSum%>%
+  group_by(type)%>%
+  summarise(mean = mean(YrTravelCost),
+            median = median(YrTravelCost),
+            sd = sd(YrTravelCost),
+            max = max(YrTravelCost),
+            min = min(YrTravelCost),
+            cv = sd/mean)
+
+hCByType <- features5%>%
+  group_by(type)%>%
+  summarise(mean = mean(hCost),
+            median = median(hCost),
+            sd = sd(hCost),
+            max = max(hCost),
+            min = min(hCost),
+            cv = sd/mean)
+```
+
+
+```{r}
+#dealing with 50,000 total km of boat travel outlier
+pers2 <- pers%>%
+  subset(totalKmPre < 2000)
+pers3 <- pers%>%
+   Clean != "Did not report"
+
+#turning character vectors into factors for Clean variable, for later when we need a nice legend for the plot
+Features4$Clean <- factor(features4$Clean, levels=c("100% of the time", "75% of the time", "50% of the time", "25% of the time", "0% of the time", "Did not report"), labels=c("100% of the time", "75% of the time", "50% of the time", "25% of the time", "0% of the time", "Did not report"))
+
+
+persAgeBin <- pers3 %>%
+    filter(!is.na(ageBin)) %>%
+    group_by(ageBin, Clean) %>%
+    summarise(n = n())%>%
+    spread(Clean, n)
+persAgeBin[is.na(persAgeBin)] <- 0
+#calculating row total
+persAgeBin$total <- rowSums(persAgeBin[,2:6])
+
+#renaming columns for easy mutate 
+names(persAgeBin)[names(persAgeBin)=="25% of the time"] <- "n25Clean"
+names(persAgeBin)[names(persAgeBin)=="50% of the time"] <- "n50Clean"
+names(persAgeBin)[names(persAgeBin)=="75% of the time"] <- "n75Clean"
+names(persAgeBin)[names(persAgeBin)=="0% of the time"] <- "n0Clean"
+names(persAgeBin)[names(persAgeBin)=="100% of the time"] <- "n100Clean"
+
+#calculating proportions
+persAgeBin2 <- persAgeBin%>%
+  mutate(p25 = round(n25Clean/total, digits=2),
+         p50 = round(n50Clean/total, digits=2),
+         p0 = round(n0Clean/total, digits=2),
+         p75 = round(n75Clean/total, digits=2),
+         p100 = round(n100Clean/total, digits=2))
+
+
+
+
+persAgeBin <- pers3 %>%
+    filter(!is.na(ageBin)) %>%
+    group_by(ageBin, Clean) %>%
+    summarise(n = n())
+
+#distribution of annual km by age bin among the personal operators, just revise the y variable to km
+ggplot(persAgeBin, aes(x = ageBin, y = n)) +
+  geom_bar(stat = "identity", position = position_stack())+
+  scale_color_manual(values = c("#0073C2FF", "#EFC000FF"))+
+  scale_fill_manual(values = c("#0073C2FF", "#EFC000FF")) +theme_bw()
+
+mean = mean(totalKmPre),
+            median = median(totalKmPre),
+            clean = n(totalKmPre),
+            max = max(totalKmPre),
+            min = min(totalKmPre),
+            cv = sd/mean)
+
+
+```
+
+#Plotting the data
+```{r}
+#dealing with 50,000 total km of boat travel outlier
+pers2 <- pers%>%
+  subset(totalKmPre < 2000)
+pers3 <- pers%>%
+  subset(totalKmPre < 2000 &
+         Clean != "Did not report")
+
+
+
+#colors for plot
+theme <- c('#a63603','#e6550d','#fd8d3c','#fdae6b','#fdd0a2','#feedde')
+#plot
+t <- ggplot(pers3, aes(age, totalKmPre, colour = Clean)) + geom_point() +
+  geom_hline(aes(yintercept = 0)) + ylim(0,2000) 
+t + labs(colour = "CleanDrainDry") +scale_color_manual(values=theme) +ylab("km / year")
+```
+
+
+
+
+#Clean Drain Dry behavior by age bin and operator type
 In all of the above results the commercials are mixed in with the personal trips
-# separating commercial from personal
+# separating commercial from personal in data.csv
 ```{r}
 #getting rid of % sign in character string, then converting character to numeric, doing for percentCom and percentGov
 data2 <- data
@@ -114,6 +283,10 @@ data2$percentGov <- gsub("[[:punct:]]", " ", data2$percentGov)
 data2$percentGov <- as.numeric(as.character(data2$percentGov))
 data2$percentGov <- with(data2, ifelse(is.na(percentGov),0,percentGov/100))
 data2$percentPer <- with(data2, 1-percentGov-percentCom)
+
+#renaming columns
+names(data2)[names(data2)=="CleanDrainDry"] <- "Clean"
+
 
 #turning character to numeric for income variable
 incCoding <- read.csv("reference_tables/incCoding.csv", stringsAsFactors = FALSE)
@@ -127,35 +300,150 @@ medianIncome <- median(data3$Income, na.rm=TRUE)
 data3$Income <- with(data3, ifelse(is.na(Income), medianIncome, Income))
 
 #creating a selection of columns from data to join to features
-resInfo <- dplyr::select(data3, responseID, percentPer, percentCom, percentGov, Income, freshOutside, CleanDrainDry, operateFresh, operateMarine)
-
-features4 <- features3 %>%
- dplyr::left_join(resInfo, by = "responseID")
-```
-
-# exploring some data
-```{r}
-
-
-plot(features4$Income, features4$YrCostPre)
-#has all types of operators mixed in
+data3Select <- dplyr::select(data3, responseID, percentPer, percentCom, percentGov, Income, freshOutside, Clean)
 
 ```
 
-
-
-#Table showing main purpose of route by mean ranking
+#Plotting compliance with clean drain dry by age bin using the data.csv file with 965 observations not only the respondents who used the mapping tool
 ```{r}
-StatsByPur <- features4 %>%
+
+
+
+
+
+
+persAgeBin <- pers3 %>%
+    filter(!is.na(ageBin)) %>%
+    group_by(ageBin, Clean) %>%
+    summarise(n = n())  
+
+#plotting proportions of clean drain dry proportions by age bin
+library(ggplot2)
+ggplot(persAgeBin, aes(x = ageBin, y = n, fill = Clean)) +
+       geom_bar(stat = 'identity', position = 'fill', aes(fill = Clean))
+```
+
+
+
+
+
+
+#Exploratory data analysis
+Table showing main purpose of route by mean ranking
+```{r}
+StatsByPur <- features5 %>%
   dplyr::group_by(primaryPur)%>%
-  summarise(percentRoutes = n()/nrow(features4),
+  summarise(percentRoutes = n()/nrow(features5),
             meanRank = mean(rank),
             count = n())%>%
   arrange(desc(count))
   
 write.table(StatsByPur, file = "tables/table2.txt", sep = ",", quote = FALSE, row.names = F)
 
+#getting density data, 9 commercial operators, 15 government, and 741 personal/private
+c <- density(com$hCost)
+g <- density(gov$hCost)
+p <- density(pers$hCost)
+
+#plotting kernel densities
+plot(c)
+plot(g)
+plot(p)
+
+# correlation between income and annual travel cost for personal operators
+
+plot(pers$age, pers$Income)
+
 ```
+
+
+
+
+#Developing a color palette for printing 
+```{r}
+# Function for plotting colors side-by-side
+pal <- function(col, border = "light gray", ...){
+  n <- length(col)
+  plot(0, 0, type="n", xlim = c(0, 1), ylim = c(0, 1),
+       axes = FALSE, xlab = "", ylab = "", ...)
+  rect(0:(n-1)/n, 0, 1:n/n, 1, col = col, border = border)
+}
+
+# FOCUS PALETTES
+# Red as highlight
+#redfocus = c("#CB181D", "#252525", "#525252", "#737373", "#969696", "#BDBDBD", "#D9D9D9", "#F0F0F0")
+ redfocus = c("#CB181D", "#252525", "#525252", "#737373", "#969696", "#BDBDBD")
+# Green as highlight
+#greenfocus = c("#41AB5D", "#252525", "#525252", "#737373", "#969696", "#BDBDBD", "#D9D9D9", "#F0F0F0")
+ greenfocus = c("#41AB5D", "#252525", "#525252", "#737373", "#969696", "#BDBDBD")
+# Blue as highlight
+bluefocus = c("#0033FF", "#252525", "#525252", "#737373", "#969696", "#BDBDBD", "#D9D9D9", "#F0F0F0")
+ 
+pal(greenfocus)
+
+# EQUAL WEIGHT
+# Generated with rainbow(12, s = 0.6, v = 0.75)
+rainbow12equal = c("#BF4D4D", "#BF864D", "#BFBF4D", "#86BF4D", "#4DBF4D", "#4DBF86", "#4DBFBF", "#4D86BF", "#4D4DBF", "#864DBF", "#BF4DBF", "#BF4D86")
+rainbow10equal = c("#BF4D4D", "#BF914D", "#A8BF4D", "#63BF4D", "#4DBF7A", "#4DBFBF", "#4D7ABF", "#634DBF", "#A84DBF", "#BF4D91")
+rainbow8equal = c("#BF4D4D", "#BFA34D", "#86BF4D", "#4DBF69", "#4DBFBF", "#4D69BF", "#864DBF", "#BF4DA3")
+rainbow6equal = c("#BF4D4D", "#BFBF4D", "#4DBF4D", "#4DBFBF", "#4D4DBF", "#BF4DBF")
+ 
+# Generated with package "gplots" function rich.colors(12)
+rich12equal = c("#000040", "#000093", "#0020E9", "#0076FF", "#00B8C2", "#04E466", "#49FB25", "#E7FD09", "#FEEA02", "#FFC200", "#FF8500", "#FF3300")
+rich10equal = c("#000041", "#0000A9", "#0049FF", "#00A4DE", "#03E070", "#5DFC21", "#F6F905", "#FFD701", "#FF9500", "#FF3300")
+rich8equal = c("#000041", "#0000CB", "#0081FF", "#02DA81", "#80FE1A", "#FDEE02", "#FFAB00", "#FF3300")
+rich6equal = c("#000043", "#0033FF", "#01CCA4", "#BAFF12", "#FFCC00", "#FF3300")
+ 
+# Generated with package "fields" function tim.colors(12), which is said to emulate the default matlab colorset
+tim12equal = c("#00008F", "#0000EA", "#0047FF", "#00A2FF", "#00FEFF", "#5AFFA5", "#B5FF4A", "#FFED00", "#FF9200", "#FF3700", "#DB0000", "#800000")
+tim10equal = c("#00008F", "#0000FF", "#0070FF", "#00DFFF", "#50FFAF", "#BFFF40", "#FFCF00", "#FF6000", "#EF0000", "#800000")
+tim8equal = c("#00008F", "#0020FF", "#00AFFF", "#40FFBF", "#CFFF30", "#FF9F00", "#FF1000", "#800000")
+tim6equal = c("#00008F", "#005AFF", "#23FFDC", "#ECFF13", "#FF4A00", "#800000")
+ 
+# Generated with sort(brewer.pal(8,"Dark2")) #Dark2, Set2
+dark8equal = c("#1B9E77", "#666666", "#66A61E", "#7570B3", "#A6761D", "#D95F02", "#E6AB02", "#E7298A")
+dark6equal = c("#1B9E77", "#66A61E", "#7570B3", "#D95F02", "#E6AB02", "#E7298A")
+set8equal = c("#66C2A5", "#8DA0CB", "#A6D854", "#B3B3B3", "#E5C494", "#E78AC3", "#FC8D62", "#FFD92F")
+set6equal = c("#66C2A5", "#8DA0CB", "#A6D854", "#E78AC3", "#FC8D62", "#FFD92F")
+ 
+pal(rich8equal)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Some exploratory analysis
+```{r}
+#Creating descriptive stats tables
+Hmisc::describe(features3$hCost )
+Hmisc::describe(features3$YrCostPre)
+
+tableData <- dplyr::select(features4, "hCost", "totalKm", "km", "freqPre", "freqPost", "primaryPur")
+    
+stargazer::stargazer(tableData, digits=0,  out="tables/table1.txt")
+stargazer::stargazer(tableData, digits=0, type = "html", out="tables/table1.html")
+```
+
+
+
+
+
+
+
+
 
 
 #High priority TASKS
