@@ -1,23 +1,23 @@
 ---
-title: "Drawing a simple random sample for a study of boat movements across Alaska"
+title: "Study of freshwater AIS pathway: Alaska boat ownership"
 author: "Tobias Schwoerer"
 date: "November 29, 2018"
 output: html_document
 editor_options: 
   chunk_output_type: console
 ---
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
-```
-##Sample frame 
+
+##1. Sample frame 
 The sample frame was created with a data dump from the Alaska Department of Motorvehicles (ADMV) registration database as of December 2017. The database contains any current and historic registered boats including first owners' address , multi-owners' names, and information about boat characteristics including boat length, engine type and power, etc. The data dump was received through Tammy Davis at the Alaska Department of Fish and Game, the study's sponsor. 
 
 The data was cleaned of any space occurring after text strings, columns were renamed for shorter code, and ZIP codes were trimmed. Registered house boats and commercial fishing boats were not included in the sample frame. A subset of this database was then further used that showed only the currently registered boats with registration expiring in 2018 or later. In order to test whether a stratified random sample was preferred over a simple random sample, we included information on geographic regions, approximately consistent with Alaska's HUC6 watersheds.  
-```{r echo=FALSE}
+```{r include=FALSE}
+
 library(dplyr)
 library(tidyr)
 library(stringr)
 library(sampling)
+library(kableExtra)
 
 #Importing dataset, renaming columns
 #data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/registration/DMV_registered_boats_data_2017.csv", stringsAsFactors=FALSE)
@@ -68,7 +68,6 @@ register4 <- subset(register3, CATEGORY.SUB!="D") #taking out houseboats
 
 #Subset for current registrations only
 register2018 <- subset(register4, REG.YR.EXPIRE >=2018)
-
 ```
 
 To distinguish the registered boats from boat owners, we then extracted the unique name and street address records of boat owners first listed in the database, which were the only owners with contact information. The final sample frame contained 45,401 boat owners. 
@@ -96,76 +95,91 @@ uni <- unique(allOwners_long[, "values"])
 
 
 
-###Boat ownership by boat type and region
+###1.1 Ownership and boat types 
 Boat types recorded in the ADMV registration database include open skiffs, cabin cruisers, personal water craft (e.g. jet skis), sailboats, and a catch all category. Below we show frequency counts for boat types registered by region where the first boat owner listed in the database (in case of multi-ownership) resided in. While each Alaska boat owner was grouped into one of Alaska's large watershed regions,  boat owners residing outside Alaska were grouped into an Outside category. 
-```{r echo=TRUE}
+```{r echo=FALSE}
 boatTypesByRegion <- register2018 %>%
   group_by(Regions)%>%
   summarise(Skiffs = sum(CATEGORY.SUB=="A"),
             Cabin.Cruisers = sum(CATEGORY.SUB =="B"),
             Personal.Water.Craft = sum(CATEGORY.SUB =="C"),
             Sailboats = sum(CATEGORY.SUB =="E"),
-            other = sum(CATEGORY.SUB =="F") )
-knitr::kable(boatTypesByRegion, caption = "Frequency count of boat types registered as of December 2017")
-stargazer::stargazer(boatTypesByRegion, digits=0,  out="tables/boatTypeByRegion.txt")#creating table
-
-boatTypes <- register2018 %>%
-  summarise(Skiffs = sum(CATEGORY.SUB=="A"),
-            Cabin.Cruisers = sum(CATEGORY.SUB =="B"),
-            Personal.Water.Craft = sum(CATEGORY.SUB =="C"),
-            Sailboats = sum(CATEGORY.SUB =="E"),
-            other = sum(CATEGORY.SUB =="F") )
-total <- with(boatTypes,sum(Skiffs, Cabin.Cruisers, Personal.Water.Craft, Sailboats, other))
-
-boatPerc <- boatTypes %>%
-  summarise(SkiffsPerc = Skiffs/total,
-            CabinPerc = Cabin.Cruisers/total,
-            PWCPerc = Personal.Water.Craft/total,
-            SailPerc = Sailboats/total,
-            otherPerc = other/total)
-knitr::kable(boatPerc, caption = "Proportions of boat types owned")
-stargazer::stargazer(boatPerc, digits=0,  out="tables/boatPerc.txt")#creating table
+            other = sum(CATEGORY.SUB =="F")
+            )
+boatTypesByRegion$total <- with(boatTypesByRegion,rowSums(boatTypesByRegion[c("Skiffs","Cabin.Cruisers","Personal.Water.Craft","Sailboats","other")]))
+boatPerc <- boatTypesByRegion %>%
+   mutate(Skiffs_pct = round(Skiffs/total*100,digits=1),
+            Cabin.Cruisers_pct = round(Cabin.Cruisers/total*100,digits=1),
+            PWC_pct = round(Personal.Water.Craft/total*100,digits=1),
+            Sail.Boats_pct = round(Sailboats/total*100,digits=1),
+            Other_pct = round(other/total*100, digits=1))
+boatPerc <- subset(boatPerc, select = -c(Skiffs, Cabin.Cruisers, Personal.Water.Craft, Sailboats, other, total)) #dropping unnecessary columns
+knitr::kable(boatPerc, caption = "Percent of boats owned by type and region of owner residence, 2018")%>%
+  kable_styling()
 
 # registered boats per owner on average by type
 ownersByRegion <- boat_owners%>%
   group_by(Regions)%>%
   summarise(Owners = n())
 
-avgOwnership <- ownersByRegion%>%
+Region_centroids <- read.csv("reference_tables/Region_centroids.csv", stringsAsFactors = FALSE)
+Region_centroids$Region <- with(Region_centroids, ifelse(Region=="Aleutian Islands", "Alaska Peninsula and Aleutian Islands", Region))
+#cleaning up columns no longer needed
+Region_centroids <- subset(Region_centroids, select = -c(FID, region_id, area_km))
+
+#Adding row for Outside Alaska lat 47.6062, -122.3321
+add<-data.frame("Outside Alaska",-122.3321,47.6062 )
+names(add)<-c("Region","long", "lat")
+
+Region_centroids <- rbind(Region_centroids, add)
+
+Ownership <- ownersByRegion%>%
   left_join(boatTypesByRegion, by="Regions")%>%
+  left_join(Region_centroids, by=c("Regions"="Region"))%>%
   dplyr::mutate(SkiffsAvg = round(Skiffs/Owners,digits=2),
               CabinCruisersAvg = round(Cabin.Cruisers/Owners, digits=2),
-              PersonalWaterCraftAvg = round(Personal.Water.Craft/Owners, digits=2),
+              PersonalWaterCraftAvg = round(Personal.Water.Craft/Owners,digits=2),
               SailboatsAvg = round(Sailboats/Owners, digits=2),
               otherAvg = round(other/Owners, digits=2) )
+Ownership$total <- with(Ownership,rowSums(Ownership[c("Skiffs","Cabin.Cruisers","Personal.Water.Craft","Sailboats","other")]))
+Ownership$boatsPerOwner <- with(Ownership, round(total/Owners, digits=1))
 
-# historical trends in boat type frequency, see if there is an increase in personal water craft, can't look at this since database is showing expired and not renewed assets for a certain year and not what in that year was actually registered. In cany case below is the code. 
-register2$Residency <- with(register2, ifelse(Regions=="Outside Alaska","non-residents", "residents"))
+#Table: Owner count, ownership by boat type and average number of boats owned in 2018
+Ownership_short <- Ownership[,-c(9:16)]
+Ownership_short%>%
+janitor::adorn_totals("row")
 
-histTypeCount <- register2%>%
-  group_by(CATEGORY.SUB, REG.YR.EXPIRE)%>%
-  summarise(count = n_distinct(PROPERTY.ISN))
-  #eliminating REG.YR.EXPIRE > 2020, eliminating empty category also
-is.na(histTypeCount$CATEGORY.SUB) <- histTypeCount$CATEGORY.SUB == ""
-histTypeCount <- na.omit(histTypeCount)
-histTypeCount <- subset(histTypeCount,REG.YR.EXPIRE<=2020)
-
-library(ggplot2)
-ggplot(histTypeCount) + 
-  facet_wrap(~CATEGORY.SUB,ncol = 3, scales = "free_y") +
-               geom_line(aes(x=REG.YR.EXPIRE,y=count,color=CATEGORY.SUB),
-                                           size=1, show.legend=T, text = element_text(size=30)) + 
-  labs(title="",x="Year",y="Count") +
-  theme_bw() + labs(title="Historical count of registered boats by boat type",x="Year",y="boat count") +scale_color_discrete(name = "Boat Type")
+knitr::kable(Ownership_short, caption = "Owner and boat count by boat type and region of owner residence, 2018")%>%
+  kable_styling()
 ```
 
-The average number of registered boats by type owned per boat owner. 
+###1.2. Percentage of boat types by region of owner residence, 2018
+```{r echo=FALSE}
+library(leaflet)
+library(leaflet.minicharts)
+basemap <- leaflet(width = "100%", height = "650px") %>%
+  addTiles()%>%
+  addProviderTiles(providers$Esri.WorldTopoMap)
+
+colors <- c("#d7191c","#fdae61","#ffffbf","#abd9e9","#2c7bb6")
+
+basemap %>%
+  addMinicharts(
+    Ownership$long, Ownership$lat,
+    type = "pie",
+    chartdata = Ownership[, c("Skiffs","Cabin.Cruisers","Personal.Water.Craft","Sailboats","other")], 
+    colorPalette = colors, 
+    width = 50 , transitionTime = 0
+  )
+# width = 60 * sqrt(Ownership$total) / sqrt(max(Ownership$total)), transitionTime = 0
+# historical trends in boat type frequency, see if there is an increase in personal water craft, can't look at this since database is showing expired and not renewed assets for a certain year and not what in that year was actually registered. In cany case below is the code. 
+```
 
 
-#Sample
+##2. Sample
 Based on the above groupings and through external analysis (in Excel), we determined that the simple random sample without replacement would provide for the smallest margin of error compared to a stratified random sample. We drew a pretest sample of 50 boat owners which was later extracted from the sample frame when drawing the final sample of 5095 boat owners. Sample size was determined in external analysis in Excel.   
 
-##Pretest sample
+###2.1 Pretest
 For the pretest, we selected a simple random sample withough replacement of sample size 50. 
 ```{r echo=FALSE}
 ##Creating simple random sample for pre-test
@@ -178,9 +192,9 @@ pretest <- select(sample.srswor, OWNER.NAME.LAST.1, OWNER.NAME.FIRST.1, OWNER.NA
 #write.csv(pretest, "G:/My Drive/CURRENT_PROJECTS/4_Boatmovements/pre_test/pretest_contacts.csv")
 ```
 
-##Sample
+###2.2 Final contact lists for business owners and individuals
 For the final study, we selected a simple random sample without replacement of size 5095. We then distinguished between businesses and private individuals and created two mail out lists. 
-```{r}
+```{r echo=FALSE}
 ##Creating remaining frame, eliminating pre-test contacts
 eliminate <- pretest$PROPERTY.ISN
 frame2 <- subset(boat_owners, !(boat_owners$PROPERTY.ISN %in% eliminate))
@@ -200,4 +214,9 @@ private <- subset(mailout, OWNER.NAME.LAST.1!="")
 ## Creating table of PROPERTY.ISN (serving as unique ID), and ZIP code, for research subject payment documentation
 #table_lexi <- mailout[,c("PROPERTY.ISN","ADDR.MAIL.CITY","ADDR.MAIL.ZIP")]
 #write.csv(table_lexi,"G:/My Drive/CURRENT_PROJECTS/4_Boatmovements/sampling/table_lexi.csv")
+```
+
+###2.3 Analysis of multi-ownership
+```{r echo=FALSE}
+
 ```
