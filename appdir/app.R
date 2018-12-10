@@ -15,7 +15,7 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       selectInput(inputId = "variableselected", label = "Select numeric variable to show in color",
-                  list(`Trip frequency`= "freqPre",
+                  list(#`Trip frequency`= "freqPre",
                        `Total anual km`="totalKmPre",
                        `Route length in km`="km",
                        `Personal income`="Income",
@@ -46,7 +46,7 @@ server <- function(input, output){
     map$variableplot <- as.numeric(map@data[, input$variableselected]) # ADD this to create variableplot
     
     # Create leaflet
-    pal <- colorBin("YlOrRd", domain = map$variableplot, bins = 7) # CHANGE map$cases by map$variableplot
+    pal <- colorBin("YlOrRd", domain = map$variableplot, bins =5,  alpha = FALSE, na.color = "black", reverse=T) # CHANGE map$cases by map$variableplot
     
     labels <- sprintf("%s: %g", map$responseID, map$variableplot) %>% lapply(htmltools::HTML) # CHANGE map$cases by map$variableplot
     
@@ -55,10 +55,11 @@ server <- function(input, output){
       color = ~pal(variableplot), #"green"
       weight = 2,
       opacity = 1.0, 
-      fill = FALSE, 
+      fill = FALSE,
+     # dashArray = "3",
      # fillColor =  ~pal(variableplot),
       fillOpacity = 0.2, 
-     smoothFactor = 3,
+      smoothFactor = 3,
       noClip=TRUE,
       label = labels) %>%
       leaflet::addLegend(pal = pal, values = ~variableplot, opacity = 0.7, title = NULL)

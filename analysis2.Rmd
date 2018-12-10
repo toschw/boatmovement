@@ -136,7 +136,7 @@ library(stringr)
 features4$wasInElodea<-str_replace_all(features$wasInElodea,"\\s","_")
 features4$wasInElodea <- with(features4, ifelse(wasInElodea=="","Did not report",wasInElodea))
 features4$wasInElodea <- with(features4, ifelse(wasInElodea=="I_cannot_remember","Cannot remember",wasInElodea))
-write.csv(featuresApp, "C:/Users/Toby/Dropbox/DATA/2018_boat_survey/featuresApp.csv" )
+#write.csv(featuresApp, "C:/Users/Toby/Dropbox/DATA/2018_boat_survey/featuresApp.csv" )
 
 # creating subsets for each type of operator
 com <- subset(features5, type=="commercial")
@@ -326,7 +326,7 @@ leaflet(maprespondents)%>%
 elodea <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/elodea.csv")
 elodeaTRUE <- subset(elodea, presence=="TRUE")
 
-mapgeo <- geojson_read("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/map.geojson", what = "sp")
+#mapgeo <- geojson_read("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/map.geojson", what = "sp")
 
 #creating leaflet map of elode occurences
 leaflet(elodeaTRUE, width = "75%", height = 500) %>%
