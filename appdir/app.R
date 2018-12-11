@@ -4,12 +4,14 @@ library(DT)
 library(dygraphs)
 library(xts)
 library(leaflet)
+library(geojsonio)
 
 data <- read.csv("data/featuresApp.csv")
-map <- readOGR("data/Boater_Joined_2/Boater_Joined_2.shp")
+#map <- readOGR("data/Boater_Joined_2/Boater_Joined_2.shp")
+map <- geojsonio::geojson_read("data/new_joined_output.geojson", what = "sp")
 
 # ui object
-elodeaNo <- c("Did not report","Cannot remember")
+
 ui <- fluidPage(
   titlePanel(p("Mapping responses from registered boat owners in Alaska", style="color:#3474A7")),
   sidebarLayout(
@@ -28,8 +30,7 @@ ui <- fluidPage(
                        `No`="No"))),
     
     mainPanel(
-      leafletOutput(outputId = "map")  #Insert , here if other parts become active 
-     
+      leafletOutput(outputId = "map")  #Insert, here if other parts become active
     )
   )
 )

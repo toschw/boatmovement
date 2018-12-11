@@ -37,6 +37,9 @@ names(register)<-names(register)%>%
 register$Community <- str_trim(register$Community)
 register$OWNER.NAME.FIRST.1 <- str_trim(register$OWNER.NAME.FIRST.1)
 register$OWNER.NAME.LAST.1 <- str_trim(register$OWNER.NAME.LAST.1)
+register$OWNER.NAME.LAST.2 <- str_trim(register$OWNER.NAME.LAST.2)
+register$OWNER.NAME.LAST.3 <- str_trim(register$OWNER.NAME.LAST.3)
+register$OWNER.NAME.LAST.4 <- str_trim(register$OWNER.NAME.LAST.4)
 register$OWNER.NAME.MIDDLE.1 <- str_trim(register$OWNER.NAME.MIDDLE.1)
 register$CATEGORY.SUB <- str_trim(register$CATEGORY.SUB)
 register$USE.TYPE <- str_trim(register$USE.TYPE)
@@ -70,29 +73,24 @@ register4 <- subset(register3, CATEGORY.SUB!="D") #taking out houseboats
 register2018 <- subset(register4, REG.YR.EXPIRE >=2018)
 ```
 
-To distinguish the registered boats from boat owners, we then extracted the unique name and street address records of boat owners first listed in the database, which were the only owners with contact information. The final sample frame contained 45,401 boat owners. 
+There are 54809 registered boats in the state of Alaska with registrations expiring wither in 2018 or later. Since a boat owner can have multiple boats, we created a set of unique last names and street addresses associated with owners who are listed first in titles and consequently the database. There are 45401 boat owners first listed on titles. 
 
 ```{r echo=FALSE}
 #Unique first owners name (incl. company) and unique street address field
 boat_owners <- register2018 %>%
   distinct(NAME1, ADDR.MAIL.STREET, .keep_all=TRUE)
+```
 
-#All unique owners including first, second, third and forth that currently have registered boats.
-# Note, use stringAsFactors because of the alike imported data ignoring factors. 
-
-allOwners_wide <- with(boat_owners, data.frame(NAME1,NAME2,NAME3,NAME4,stringsAsFactors=FALSE))
-#number of elements in allOwners_wide are equal to the first owners which made up the sample frame
-#Combining all columns into one column of all owners together
-allOwners_long <- stack(allOwners_wide, 
+Accounting for first, second, third and forth owners, we again created a list of unique names totalling  56103 owners, therefore 10702 owners are listed either as second, third, or forth owners. 
+```{r}
+allOwners_long <- stack(register2018, 
                      select=c(NAME1, 
                               NAME2, 
                               NAME3,
-                              NAME4))
-# Then compute the unique elements using unique() equal to the number of unique boat owners with registered boats
-uni <- unique(allOwners_long[, "values"])
-#uni #is the number of boat owners contained in the final sample frame
-```
-
+                              NAME4))%>%
+  distinct(values)
+totalOwnership <- unique(allOwners_long[, "values"])
+```  
 
 
 ###1.1 Ownership and boat types 

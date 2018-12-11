@@ -278,7 +278,6 @@ ggplot(persAgeBinClean, aes(x = ageBin, y = n, fill = Clean)) +
 
 ggplot(persAgeBinClean, aes(x = ageBin, y = n, fill = Clean, label = n)) +
        geom_bar(stat = 'identity',position = 'fill', aes(fill = Clean)) +labs(x="Age Group",y="proportion", caption = "302 respondents reported age and extent of clean drain dry.") + scale_fill_discrete(name = "Clean Drain Dry") + geom_text(size = 3)
-
 ```
 
 #Creating map of response locations shown for all 965 respondents
