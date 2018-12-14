@@ -4,11 +4,10 @@ author: "Tobias Schwoerer"
 date: "November 21, 2018"
 output: html_document
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 ---
 
-# Importing the data files, visualizing all respondent boat tracks 
-
+# Data import
 ```{r}
 library(jsonlite)
 library(geojson)
@@ -18,88 +17,110 @@ library(tidyr)
 library(Hmisc)
 library(ggplot2)
 library(RColorBrewer)
-
-#cleaned up features (tracks the respondents entered into the mapping tool)
-#map <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/map.geojson",what = "sp")
-#map <- geojson_read("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/map.geojson", what = "sp")
+library(stringr)
+library(summarytools)
 
 #features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
 features <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+names(features)[names(features)=="LenghtKM"] <- "km"#renaming misspelled column
+freqCoding <- read.csv("reference_tables/freqCoding.csv", stringsAsFactors = FALSE) #this file was created to quickly recode trip frequencies
 
-#renaming misspelled column
-names(features)[names(features)=="LenghtKM"] <- "km"
-
-
-freqCoding <- read.csv("reference_tables/freqCoding.csv", stringsAsFactors = FALSE)
-
-#cleaned data associated with the survey answers of each respondent
 #data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
 data <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
-
-# the joined data and map output, joined these files using the python script
-#mapdata <- geojson_read("D:/Dropbox/DATA/2018_boat_survey/output.geojson",what = "sp")
-#mapdata <- geojson_read("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/output.geojson",what = "sp")
-
-#creating leaflet map showing all routes
-#leaflet(mapdata) %>%
-#  addTiles() %>%
-#  addPolylines() %>%
-#  addProviderTiles(providers$Stamen.TerrainBackground)
 ```
 
-#Calculating trip frequencies pre and post hypothetical elodea invasions of waterways used 
+#Clean and mutate features.csv
+Each row in this file is associated with a track a respondent entered in the mapping tool of the survey (custom programmed in Qualtrics). First, we recode trip frequencies as stated by respondents in form of an interval. We take the mean of the interval for further analysis. Note, respondents stated trip frequencies for the 2018 summer season (current summer) and answered a hypothetical question how the number of trips would have changed would elodea clog some of the waterbodies they boated on.   
 ```{r}
 #calculating pre elodea trip frequencies
 features2 <- features%>%
-  left_join(freqCoding,  by = c("trackFrequ"="Coding"))
-features2$freqPre <- rowMeans(features2[c("Lower","Upper")], na.rm=TRUE)
-#Renaming columns 
-names(features2)[names(features2)=="Lower"] <- "LowerPre"
-names(features2)[names(features2)=="Upper"] <- "UpperPre"
+  left_join(freqCoding,  by = c("trackFrequ"="Coding"))   #recoding trip frequencies
+features2$freqPre <- round(rowMeans(features2[c("Lower","Upper")], na.rm=TRUE),digits=0)
+names(features2)[names(features2)=="Lower"] <- "LowerPre" #Renaming columns for the lower bound of the frequency interval pre invasion
+names(features2)[names(features2)=="Upper"] <- "UpperPre" #Renaming columns for the upper bound of the frequency interval pre invasion
 
 #Calculating post elodea trip frequencies
 features3 <- features2 %>%
   left_join(freqCoding,  by = c("trackFre_1"="Coding"))
-features3$freqPost <- rowMeans(features3[c("Lower","Upper")], na.rm=TRUE)
-#Renaming columns 
-names(features3)[names(features3)=="Lower"] <- "LowerPost"
-names(features3)[names(features3)=="Upper"] <- "UpperPost"
+features3$freqPost <- round(rowMeans(features3[c("Lower","Upper")], na.rm=TRUE), digits=0)
+names(features3)[names(features3)=="Lower"] <- "LowerPost" #Renaming columns for the lower bound of the frequency interval post invasion
+names(features3)[names(features3)=="Upper"] <- "UpperPost" #Renaming columns for the upper bound of the frequency interval post invasion
 ```
 
-#Outliers and missing data for features
-#Calculating annual cost of boating per route assumes average travel speed of 10 miles/h equal to 16km/h
+Calculating annual operating cost per route. Here, we calculate the annual km as the product of the stated trip frequency, round-trip length in km (calculated by ArcGIS), the stated hourly boat operating cost, and the inverse of the assumed average travel speed of 10 miles/h (16km/h). Both pre- and post-invasion costs are calculated. 
 ```{r}
-#calculating mean cost from the high and low cost per hour respondents reported
-#last argument excludes missing values
-features3$hCost <- rowMeans(features3[c("hCostHigh","hCostLow")], na.rm=TRUE)
+#hCost: hourly operating cost
+features3$hCost <- rowMeans(features3[c("hCostHigh","hCostLow")], na.rm=TRUE) #calculating the hCost interval mean for furthe ranalysis, ignore missing 
+features3$hCost[features3$hCost==20000] <- NA  #outliers and missing value
+#medianCost <- median(features3$hCost, na.rm=TRUE)  #calculating the median cost per h
+#features3$hCost <- with(features3, ifelse(is.na(hCost), medianCost, hCost))  # inserting median cost for missing values
+features3$hCost[is.nan(features3$hCost)] <- NA  #R tried to get the mean of the Lower and Upper values but if respondent left blank those are NA, so the mean is also NA
 
-#dealing with outlier on cost
-features3$hCost[features3$hCost==20000] <- NA
-hist(features3$hCost, breaks=20)
-
-#dealing with outliers on km, setting frequency of trips pre if Up to 4 setting it to 1 if km >300
+#km: outliers, setting frequency of trips pre if Up to 4 setting it to 1 if km >300
 features3$freqPre <- with(features3, ifelse(km>300 & trackFrequ=="Up to 4",1,freqPre))
 
-#dealing with ranks that are 0
-features3$rank <- with(features3, ifelse(rank==0, 1, rank)) 
+#rank of route
+features3$rank <- with(features3, ifelse(rank==0, 1, rank)) #dealing with ranks that are 0
 
-#dealing with missing values by first calculating the median cost per h then inserting missing values with the median
-medianCost <- median(features3$hCost, na.rm=TRUE)
-features3$hCost <- with(features3, ifelse(is.na(hCost), medianCost, hCost))
-
-#calculating the total km per route then annual cost per route
+#YrCostPre and Post: calculating the total km per route then annual cost per route
 features3$totalKmPre <- with(features3, km * freqPre)
 features3$totalKmPost <- with(features3, km * freqPost)
 features3$YrCostPre <- with(features3, totalKmPre * hCost)
 features3$YrCostPost <- with(features3, totalKmPost * hCost)
+
+#adding up number of trips annually for each respondent across all of his/her routes
+totalTripsByRes <- features3%>%
+  group_by(responseID)%>%
+  summarise(totalTripsPre = sum(freqPre),
+            totalTripsPost = sum(freqPost),
+            routeCount = n())%>%
+  select(responseID, totalTripsPre, totalTripsPost, routeCount)
+features3 <- features3 %>%
+  left_join(totalTripsByRes, by="responseID")
+
 ```
 
-#cleaning up features further, missing data etc. 
+Missing data and recoding on other variables. Associating each route with either private, commercial, or government related operators. 
 ```{r}
-#getting rid of % sign in character string, then converting character to numeric, doing for percentCom and percentGov
-features4 <- features3 
-features4$percentCom <- gsub("[[:punct:]]", " ", features4$percentCom)
-features4$percentCom <- as.numeric(as.character(features4$percentCom))
+#INCOME recoding, cleaning, and dealing with missing data on income
+incCoding <- read.csv("reference_tables/incCoding.csv", stringsAsFactors = FALSE)
+features4 <- features3%>%
+  dplyr::left_join(incCoding,  by = "persIncomeBtax")
+features4$Income <- as.numeric(as.character(features4$Income))
+#imputing missing values for income
+#medianIncome <- median(features4$Income, na.rm=TRUE)  #calc. median income
+#features4$Income <- with(features4, ifelse(is.na(Income), medianIncome, Income))  #using median income for missing income data
+
+#AGE: questionable data, deleting entries coded "Not applicable"
+features4$age <- with(features4, ifelse(age==9 | age=="Not applicable",NA,age))
+features4$age <- as.numeric(as.character(features4$age))
+
+#ageBin
+features4$ageBin <- with(features4, ifelse(age>20&age<=30,"21-30",ifelse(age>30&age<= 40,"31-40",ifelse(age>40&age<=50,"41-50", ifelse(age>50&age<=60,"51-60", ifelse(age>60&age<=70,"61-70", ifelse(age>70&age<=80, "71-80", ">80")))))))
+features4$ageBin <- factor(features4$ageBin, levels=c("21-30", "31-40", "41-50", "51-60", "61-70", "71-80",">80"), labels=c("21-30", "31-40", "41-50", "51-60", "61-70", "71-80",">80")) #turning ageBin into factor
+
+#Clean Drain Dry, coding respondents who did not respond to 
+names(features4)[names(features4)=="CleanDrainDry"] <- "Clean"
+features4$Clean <- with(features4, ifelse(Clean=="", "Did not report", ifelse(Clean=="half the time","50% of the time",ifelse(Clean=="Every time", "100% of the time",ifelse(Clean=="Never", "0% of the time", Clean)))))
+features4$Clean <- factor(features4$Clean, levels=c("Did not report","0% of the time","25% of the time","50% of the time","75% of the time","100% of the time"), labels=c("Did not report","0% of the time","25% of the time","50% of the time","75% of the time","100% of the time")) 
+
+#wasInElodea, clean, recode
+features4$wasInElodea<-str_replace_all(features$wasInElodea,"\\s","_")
+features4$wasInElodea <- with(features4, ifelse(wasInElodea=="",NA,wasInElodea))
+features4$wasInElodea <- with(features4, ifelse(wasInElodea=="I_cannot_remember","Cannot remember",wasInElodea))
+features4$wasInElodea <- factor(features4$wasInElodea, levels=c("Yes", "No", "Did not report", "Cannot remember"), labels=c("Yes", "No", "Did not report", "Cannot remember"))
+
+#freshOutside: recoding, turning into factor for graphing
+features4$freshOutside <- with(features4, ifelse(freshOutside=="Yes","Yes",ifelse(freshOutside=="No","No","Did not report")))
+features4$freshOutside <- factor(features4$freshOutside, levels=c("Yes", "No", "Did not report"), labels=c("Yes", "No", "Did not report"))
+
+#PAX cleaning
+features4$pax <- with(features4, ifelse(pax=="none"|pax=="43134"|pax=="",NA,pax))
+features4$pax <- as.numeric(as.character(features4$pax))
+
+#USER GROUP, TYPE of OPERATOR 
+features4$percentCom <- gsub("[[:punct:]]", " ", features4$percentCom)  #getting rid of % sign in character string
+features4$percentCom <- as.numeric(as.character(features4$percentCom))  #converting character to numeric
 features4$percentCom <- with(features4, ifelse(is.na(percentCom),0,percentCom/100))
 features4$percentGov <- gsub("[[:punct:]]", " ", features4$percentGov)
 features4$percentGov <- as.numeric(as.character(features4$percentGov))
@@ -110,102 +131,30 @@ features4$percentPer <- with(features4, 1-percentGov-percentCom)
 features4$percentGov <- with(features4, ifelse(percentPer<0,percentGov-percentCom,percentGov))
 features4$percentPer <- with(features4, 1-percentGov-percentCom)
 
-#renaming columns
-names(features4)[names(features4)=="CleanDrainDry"] <- "Clean"
-
-#turning character to numeric for income variable
-incCoding <- read.csv("reference_tables/incCoding.csv", stringsAsFactors = FALSE)
-features4 <- features4%>%
-  dplyr::left_join(incCoding,  by = "persIncomeBtax")
-features4$Income <- as.numeric(as.character(features4$Income))
-
-#dealing with missing data on income
-#dealing with missing values by first calculating the median income then inserting missing values with the median
-medianIncome <- median(features4$Income, na.rm=TRUE)
-features4$Income <- with(features4, ifelse(is.na(Income), medianIncome, Income))
-
-#dealing with questionable data on age and deleting entries coded "Not applicable"
-features4$age <- with(features4, ifelse(age==9 | age=="Not applicable",NA,age))
-features4$age <- as.numeric(as.character(features4$age))
-
-#coding respondents who did not respond to Clean Drain Dry question
-features4$Clean <- with(features4, ifelse(Clean=="", "Did not report", ifelse(Clean=="half the time","50% of the itme",ifelse(Clean=="Every time", "100% of the time",ifelse(Clean=="Never", "0% of the time", Clean)))))
-
-#coding respondents who did not respond to wasInElodea
-library(stringr)
-features4$wasInElodea<-str_replace_all(features$wasInElodea,"\\s","_")
-features4$wasInElodea <- with(features4, ifelse(wasInElodea=="","Did not report",wasInElodea))
-features4$wasInElodea <- with(features4, ifelse(wasInElodea=="I_cannot_remember","Cannot remember",wasInElodea))
-#write.csv(featuresApp, "C:/Users/Toby/Dropbox/DATA/2018_boat_survey/featuresApp.csv" )
-
-# creating subsets for each type of operator
-com <- subset(features5, type=="commercial")
-pers <- subset(features5, type=="personal")
-gov <- subset(features5, type=="government")
+features4$type <- with(features4, ifelse(percentPer>0.5, "personal", ifelse(percentCom>0.5, "commercial", "government")))
+#Creating subsets by type
+featuresCom <- subset(features4, type=="commercial")
+featuresPers <- subset(features4, type=="personal")
+featuresGov <- subset(features4, type=="government")
 ```
 
-# hourly and yearly operating cost statistics (distributions)
+Preparing features file for leaflet shiny app
 ```{r}
-resSum <- features4%>%
-  group_by(responseID, type)%>%
-  summarise(YrTravelCost = sum(YrCostPre))
+#Consolidating levels for several categorical variables which will be used to subset the tracks that are shown. note, leaves the class of these variables as character 
+featuresApp <- features4
+featuresApp$wasInElodea <- with(featuresApp, ifelse(wasInElodea=="Yes","Yes","No"))
+featuresApp$freshOutside <- with(featuresApp, ifelse(freshOutside=="Yes","Yes","No or did not report"))
+featuresApp$Clean <- with(featuresApp, ifelse(Clean=="100% of the time","100% of the time","Less than 100% of the time"))
 
-#Calculating descriptive stats for annual operating cost by operator type
-TCByType <- resSum%>%
-  group_by(type)%>%
-  summarise(mean = mean(YrTravelCost),
-            median = median(YrTravelCost),
-            sd = sd(YrTravelCost),
-            max = max(YrTravelCost),
-            min = min(YrTravelCost),
-            cv = sd/mean)
+write.csv(featuresApp, "C:/Users/Toby/Documents/ANALYSIS_R/boatmovement/appdir/data/featuresApp.csv" )
 
-hCByType <- features5%>%
-  group_by(type)%>%
-  summarise(mean = mean(hCost),
-            median = median(hCost),
-            sd = sd(hCost),
-            max = max(hCost),
-            min = min(hCost),
-            cv = sd/mean)
+#creating geojson file combining data.csv with features4.csv 
+#system("C:/Users/Toby/Documents/ANALYSIS_R/boatmovement/appdir/data> python.exe .\map-data-joiner.py .\map.geojson .\features4.csv .\joined-output.geojson")
 ```
 
-#Plotting distance by personal operators by age  NEEDS WEIGHTING
+#Clean and mutate data.csv file 
 ```{r}
-#dealing with 50,000 total km of boat travel outlier
-kmDistribution <- pers%>%
-  subset(totalKmPre < 2000)%>%
-  group_by(ageBin)%>%
-  summarise(ageBinKm = sum(totalKmPre))%>%
-  na.omit()
-
-ggplot(kmDistribution, aes(x = ageBin, y = ageBinKm)) +
-  geom_bar(stat = "identity")+ theme_bw() + labs(title="2018 Total Distance of Personal Boat Trips by Age Group",x="Age Group",y="km", caption = "Note, does not show almost 28,000km of personal boaters who did not report their age.")
-
-```
-
-#Plotting distance compliance with clean drain dry by age using the features data
-```{r}
-#dealing with 50,000 total km of boat travel outlier
-pers2 <- pers%>%
-  subset(totalKmPre < 2000)
-pers3 <- pers%>%
-  subset(totalKmPre < 2000 &
-         Clean != "Did not report")
-
-#colors for plot
-theme <- c('#a63603','#e6550d','#fd8d3c','#fdae6b','#fdd0a2','#feedde')
-#plot
-t <- ggplot(pers3, aes(age, totalKmPre, colour = Clean)) + geom_point() +
-  geom_hline(aes(yintercept = 0)) + ylim(0,2000) 
-t + labs(colour = "CleanDrainDry") +scale_color_manual(values=theme) +ylab("km / year")
-```
-
-
-#Clean Drain Dry behavior by age bin and operator type
-# separating commercial from personal in data.csv
-```{r}
-#getting rid of % sign in character string, then converting character to numeric, doing for percentCom and percentGov
+#trimming % sign in character string, then converting character to numeric, doing for percentCom and percentGov
 data2 <- data
 data2$percentCom <- gsub("[[:punct:]]", " ", data2$percentCom)
 data2$percentCom <- as.numeric(as.character(data2$percentCom))
@@ -222,129 +171,63 @@ data2$percentPer <- with(data2, 1-percentGov-percentCom)
 #renaming columns
 names(data2)[names(data2)=="CleanDrainDry"] <- "Clean"
 
-#turning character to numeric for income variable
+#INCOME
 incCoding <- read.csv("reference_tables/incCoding.csv", stringsAsFactors = FALSE)
 data3 <- data2%>%
   dplyr::left_join(incCoding,  by = "persIncomeBtax")
 data3$Income <- as.numeric(as.character(data3$Income))
-
-#dealing with missing data on income
-#dealing with missing values by first calculating the median income then inserting missing values with the median
-medianIncome <- median(data3$Income, na.rm=TRUE)
+medianIncome <- median(data3$Income, na.rm=TRUE)  #dealing with missing data on income using the median
 data3$Income <- with(data3, ifelse(is.na(Income), medianIncome, Income))
 
-#dealing with questionable data on age and deleting entries coded "Not applicable"
+#AGE: questionable data on age and deleting entries coded "Not applicable"
 data3$age <- with(data3, ifelse(age<18 | age=="Not applicable",NA,age))
 data3$age <- as.numeric(as.character(data3$age))
+data4 <- data3
+#ageBin
+data4$ageBin <- with(data4, ifelse(age>20&age<=30,"21-30",ifelse(age>30&age<= 40,"31-40",ifelse(age>40&age<=50,"41-50", ifelse(age>50&age<=60,"51-60", ifelse(age>60&age<=70,"61-70", ifelse(age>70&age<=80, "71-80", ifelse(is.na(age),NA, ">80"))))))))
+data4$ageBin <- factor(data4$ageBin, levels=c("21-30", "31-40", "41-50", "51-60", "61-70", "71-80",">80"), labels=c("21-30", "31-40", "41-50", "51-60", "61-70", "71-80",">80")) #turning ageBin into factor
 
-#coding respondents who did not respond to Clean Drain Dry question
-data3$Clean <- with(data3, ifelse(Clean=="", "Did not report", ifelse(Clean=="half the time","50% of the time",ifelse(Clean=="Every time", "100% of the time",ifelse(Clean=="Never", "0% of the time", Clean)))))
+#Clean Drain Dry
+data4$Clean <- with(data4, ifelse(Clean=="", "Did not report", ifelse(Clean=="half the time","50% of the time",ifelse(Clean=="Every time", "100% of the time",ifelse(Clean=="Never", "0% of the time", Clean)))))
 
-#turning character vectors into factors for Clean variable, for later when we need a nice legend for the plot
-data3$Clean <- factor(data3$Clean, levels=c("Did not report","0% of the time","25% of the time","50% of the time","75% of the time","100% of the time"), labels=c("Did not report","0% of the time","25% of the time","50% of the time","75% of the time","100% of the time"))
+data4 <- subset(data4, select = -c(IPAddress, operateType, persIncomeBtax)) #cleaning up columns no longer needed
 
-#cleaning up columns no longer needed
-data4 <- subset(data3, select = -c(IPAddress, operateType, persIncomeBtax))
-
-#Creating bins for age
-data4$ageBin <- with(data4, ifelse(age>20&age<=30,"21-30",ifelse(age>30&age<= 40,"31-40",ifelse(age>40&age<=50,"41-50", ifelse(age>50&age<=60,"51-60", ifelse(age>60&age<=70,"61-70", ifelse(age>70&age<=80, "71-80", "81 and over")))))))
-#turning ageBin into factor
-data4$ageBin <- factor(data4$ageBin, levels=c("21-30", "31-40", "41-50", "51-60", "61-70", "71-80","81 and over"), labels=c("21-30", "31-40", "41-50", "51-60", "61-70", "71-80","81 and over"))
-
-#creating subsets by operator type
-#creating variable for personal and commercial operators
+#TYPE
 data4$type <- with(data4, ifelse(percentPer>0.5, "personal", ifelse(percentCom>0.5, "commercial", "government")))
 
+#wasInElodea
+data5 <- data4
+data5$wasInElodea <- with(data5, ifelse(wasInElodea=="", NA, wasInElodea))
+data5$wasInElodea <- with(data5, 
+                          ifelse(stringr::str_detect(wasInElodea,"I DID NOT operate a boat in any of the waterbodies listed"), "No",
+                                ifelse(stringr::str_detect(wasInElodea,"I cannot remember"), "Cannot remember", "Yes")))
+#freshOutside
+data5$freshOutside <- with(data5, ifelse(freshOutside=="Yes","Yes",ifelse(freshOutside=="No","No","Did not report")))
+#data5$freshOutside <- factor(data5$freshOutside, levels=c("Yes", "No", "Did not report"), labels=c("Yes", "No", "Did not report"))
+
+data5$Clean <- factor(data5$Clean, levels=c("Did not report","0% of the time","25% of the time","50% of the time","75% of the time","100% of the time"), labels=c("Did not report","0% of the time","25% of the time","50% of the time","75% of the time","100% of the time"))  #need factor for later plot
+
 # creating subsets for each type of operator
-datacom <- subset(data4, type=="commercial")
-datapers <- subset(data4, type=="personal")
-datagov <- subset(data4, type=="government")
+dataCom <- subset(data5, type=="commercial")
+dataPers <- subset(data5, type=="personal")
+dataGov <- subset(data5, type=="government")
 ```
 
-#Plotting compliance with clean drain dry by age bin using the data.csv file with 965 observations not only the respondents who used the mapping tool
+Preparing data file for leaflet shiny app
 ```{r}
-persAgeBinClean <- datapers %>%
-    filter(!is.na(ageBin)) %>%
-    group_by(ageBin, Clean) %>%
-    summarise(n = n())
-sum(persAgeBinClean$n)
-#965 total respondents, 302 reported age and Clean, 639 did not report Clean, 653 not reporting age
-#plotting proportions of clean drain dry proportions by age bin
-library(ggplot2)
-ggplot(persAgeBinClean, aes(x = ageBin, y = n, fill = Clean)) +
-       geom_bar(stat = 'identity', position = 'fill', aes(fill = Clean)) +labs(x="Age Group",y="proportion", caption = "302 respondents reported age and extent of clean drain dry.") + scale_fill_discrete(name = "Clean Drain Dry") 
+dataApp <- data5
+dataApp$wasInElodea <- with(dataApp, ifelse(wasInElodea=="Yes","Yes","No"))
+dataApp$freshOutside <- with(dataApp, ifelse(freshOutside=="Yes","Yes","No or did not report"))
+dataApp$Clean <- with(dataApp, ifelse(Clean=="100% of the time","100% of the time","Less than 100% of the time"))
 
-#trying to get n numbers on the top of each bar
-
-ggplot(persAgeBinClean, aes(x = ageBin, y = n, fill = Clean, label = n)) +
-       geom_bar(stat = 'identity',position = 'fill', aes(fill = Clean)) +labs(x="Age Group",y="proportion", caption = "302 respondents reported age and extent of clean drain dry.") + scale_fill_discrete(name = "Clean Drain Dry") + geom_text(size = 3)
+#Writing data file into appdir for the leaflet shiny app
+write.csv(dataApp, "appdir/data/dataApp.csv" )
 ```
 
-#Creating map of response locations shown for all 965 respondents
-```{r}
-#creating table of unique respondents and locations 
-locations <- data4 %>% 
-  distinct(responseID, LocationLatitude, LocationLongitude) %>% 
-  drop_na()
+##Representativeness of the sample
 
-data.table::data.table(locations)
-
-leaflet(locations)%>%
-    addTiles()%>%
-    addProviderTiles(providers$Esri.WorldTopoMap)%>%
-    addMarkers(lat = ~LocationLatitude, lng = ~LocationLongitude, 
-    clusterOptions = markerClusterOptions(), popup = ~responseID)
-
-library(leaflet)
-leaflet(locations)%>%
-    addTiles()%>%
-    addProviderTiles(providers$Esri.WorldTopoMap)%>%
-    addMarkers(lat = ~LocationLatitude, lng = ~LocationLongitude, popup = ~responseID)
-
-```     
-
-#Creating map of response locations (324 respondents with mapping answers)
-```{r echo=FALSE}
-maprespondents <- features5 %>%
-  distinct(responseID, LocationLatitude, LocationLongitude) %>% 
-  drop_na()
-
-data.table::data.table(maprespondents)
-
-leaflet(maprespondents)%>%
-    addTiles()%>%
-    addProviderTiles(providers$Esri.WorldTopoMap)%>%
-    addMarkers(lat = ~LocationLatitude, lng = ~LocationLongitude, 
-    clusterOptions = markerClusterOptions(), popup = ~responseID)
-```
-
-
-#plotting features data and map of elodea occurences
-```{r}
-#importing elodea presence data, and boating tracks
-elodea <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/elodea.csv")
-elodeaTRUE <- subset(elodea, presence=="TRUE")
-
-#mapgeo <- geojson_read("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/map.geojson", what = "sp")
-
-#creating leaflet map of elode occurences
-leaflet(elodeaTRUE, width = "75%", height = 500) %>%
-  addTiles() %>%
-  addProviderTiles(providers$Esri.WorldTopoMap)%>%
-  addCircleMarkers( lat = ~latitude, lng = ~longitude, radius=5, stroke = F, 
-                   color="red", weight = 5, clusterOptions = markerClusterOptions(spiderLegPolylineOptions = list(weight = 1.5, color = "#222", 
-                                                    opacity = 0.5)))
-                   
-#creating leaflet map of boat tracks
-leaflet(mapgeo, width = "75%", height = 500)%>%
-  addTiles() %>%
-  addProviderTiles(providers$Esri.WorldTopoMap)%>%
-  addPolylines(stroke = TRUE, color = "green", weight = 2,
-  opacity = 1.0, fill = FALSE, fillColor = "#03F",
-  fillOpacity = 0.2)
-```
-
-#response rate, effective sample, etc. 
+#Sample characteristics
+Response rate, effective sample size, etc. 
 ```{r echo=FALSE, results='asis'}
 #importing mail return tracking files
 busReturns <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/Business_mailReturn_tracking.csv", stringsAsFactors = F)
@@ -359,60 +242,12 @@ effsample <- subset(sample, mailReturn==0 )
 # calculating % of mail return (non-deliverables), 3.6%, effective sample (N=4914) 
 mailReturnRate <- nrow(effsample)/nrow(sample)-1
 # map responses (n=372)
-responseRate <- nrow(data4)/nrow(effsample) #965/4914 = 19.6%
+responseRate <- nrow(data5)/nrow(effsample) #965/4914 = 19.6%
 
-persResponseRate <- nrow(datapers)/nrow(privReturns) # 936/4875 = 19.2%  also 8 respondents who were mainly gov operators
-comResponseRate <-  nrow(datacom)/nrow(busReturns) # 21/220 = 9.4%
+persResponseRate <- nrow(dataPers)/nrow(privReturns) # 936/4875 = 19.2%  also 8 respondents who were mainly gov operators
+comResponseRate <-  nrow(dataCom)/nrow(busReturns) # 21/220 = 9.4%
 
-#Number of boaters in each user group who responded
-data5 <- data4
-data5$operateFresh <- with(data5, ifelse(operateFresh=="Yes",1,0))
-data5$operateMarine <- with(data5, ifelse(operateMarine=="Yes",1,0))
-data5$didNotOperate <- with(data5, ifelse(operateMarine==0&operateFresh==0,1,0))
-data5$operateBoth <- with(data5, ifelse(operateMarine==1&operateFresh==1, 1,0))
 
-userGroups <- data5%>%
-  summarise(fresh = sum(operateFresh),
-            marine = sum(operateMarine),
-            both = sum(operateBoth),
-            didNot = sum(didNotOperate))
-
-#Number of respondents with map answers, duration of response (if map answered), by user group
-data6 <- data5%>%
-  left_join(maprespondents, by = "responseID")
-data6$mapres <- with(data6, ifelse(!is.na(LocationLatitude.y),1,0))
-data6 <- select(data6, -c("LocationLatitude.y","LocationLongitude.y"))
-
-## respondents who were in elodea, new variable, Elodea with 1- yes, 0-no, I cannot remember coded as NA
-data6$Elodea <- with(data6, ifelse(wasInElodea=="I DID NOT operate a boat in any of the waterbodies listed", 0, ifelse(wasInElodea ==""|wasInElodea=="I cannot remember", NA, 1)))
-
-mapResponse <- subset(data6, mapres==1)
-mapNonRes <- subset(data6, mapres==0)
-
-#Summary of respondents with mapping response
-mapResSummary <- mapResponse%>%
-  group_by(operateMarine,operateFresh)%>%
-  summarise(median.min = round(median(Duration.s)/60, digits = 1),
-            count = n(),
-            elodeaCount = sum(Elodea, na.rm = TRUE))
-
-#Summary of respondents without mapping response
-non.mapResSummary <- mapNonRes%>%
-  group_by(operateMarine,operateFresh)%>%
-  summarise(median.min = round(median(Duration.s)/60, digits = 1),
-            count = n(),
-            elodeaCount = sum(Elodea, na.rm = TRUE))
-
-#Rank by respondent frequency of elodea infestation recorded to be visited
-locationSummary <- read.csv(textConnection(data6[["wasInElodea"]]), stringsAsFactors = FALSE)
-names(locationSummary)[names(locationSummary)=="I.DID.NOT.operate.a.boat.in.any.of.the.waterbodies.listed"] <- "location" #renaming the column
-locationSummary$location <- with(locationSummary, ifelse(location=="I DID NOT operate a boat in any of the waterbodies listed", "was not in elodea", ifelse(location=="I cannot remember","cannot remember",location)))
-
-locationSummary<-locationSummary%>%
-  group_by(location)%>%
-  summarise(count=n())
-library(knitr)
-kable(locationSummary, caption ="Respondent count to known elodea locations")
 # Other info about the sample and surveying
 otherInfo <- effsample%>%
   summarise(onlineDiffRate = sum(onlineDifficulty)/nrow(effsample),
@@ -427,16 +262,283 @@ otherInfo <- effsample%>%
 
 ```
 
+##Respondent locations
+The  Qualtrics online survey software collects respondent information such as IP addresses which can be used to determine the location the respondent was in when answering the survey. If the respondent completed the survey using the Qualtrics Offline App on a GPS-enabled device, this data will be an accurate representation of the respondent’s location. For all other respondents, the location is an approximation determined by comparing the participant’s IP address to a location database. Inside the United States, this data is typically accurate to the city level.
 
-#Map of respondents and where they reside color coded by whethe repondents gave mapping answers/did not boat
-Location Lat Long only available for 848 of the 965 respondents!!! 
+Figure: Map showing clustered locations for the 965 respondents
+```{r}
+#creating table of unique respondents and locations 
+locations <- data4 %>% 
+  distinct(responseID, LocationLatitude, LocationLongitude) %>% 
+  drop_na()
+
+data.table::data.table(locations)
+
+leaflet(locations)%>%
+    addTiles()%>%
+    addProviderTiles(providers$Esri.WorldTopoMap)%>%
+    addMarkers(lat = ~LocationLatitude, lng = ~LocationLongitude, 
+    clusterOptions = markerClusterOptions(), popup = ~responseID)
+```
+
+Figure: Map showing the locations for the 965 respondents 
+```{r}
+library(leaflet)
+leaflet(locations)%>%
+    addTiles()%>%
+    addProviderTiles(providers$Esri.WorldTopoMap)%>%
+    addMarkers(lat = ~LocationLatitude, lng = ~LocationLongitude, popup = ~responseID)
+```     
+
+Figure: Map showing locations for 324 respondents with mapping answers
+```{r echo=FALSE}
+maprespondents <- features4 %>%
+  distinct(responseID, LocationLatitude, LocationLongitude) %>% 
+  drop_na()
+
+data.table::data.table(maprespondents)
+
+leaflet(maprespondents)%>%
+    addTiles()%>%
+    addProviderTiles(providers$Esri.WorldTopoMap)%>%
+    addMarkers(lat = ~LocationLatitude, lng = ~LocationLongitude , 
+    clusterOptions = markerClusterOptions(), popup = ~responseID)
+```
+
+Respondent count by user groug of 1) solely marine water, 2) solely fresh water, 3) both, and 4) boaters who did not boat in 2018
+```{r}
+#Number of boaters in each user group who responded
+data5$operateFresh <- with(data5, ifelse(operateFresh=="Yes",1,0))
+data5$operateMarine <- with(data5, ifelse(operateMarine=="Yes",1,0)) #no data collection for marine boaters
+data5$didNotOperate <- with(data5, ifelse(operateMarine==0&operateFresh==0,1,0))
+data5$operateBoth <- with(data5, ifelse(operateMarine==1&operateFresh==1, 1,0)) #consequently both, marine and fresh water routes were collected
+
+userGroups <- data5%>%
+  summarise(fresh = sum(operateFresh),
+            marine = sum(operateMarine),
+            both = sum(operateBoth),
+            didNot = sum(didNotOperate))
+```
+
+#CONSOLIDATE THIS INTO ONE TABLE ... FIX THIS CODE
+Number of respondents with map answers, duration of response (if map answered), by user group
+```{r}
+data5 <- data5%>%
+  left_join(maprespondents, by = "responseID")
+data5$mapres <- with(data5, ifelse(!is.na(LocationLatitude.y),1,0))
+data6 <- select(data5, -c("LocationLatitude.y","LocationLongitude.y"))
+
+mapResponse <- subset(data6, mapres==1)
+mapNonRes <- subset(data6, mapres==0)
+
+#Summary of respondents with mapping response
+mapResSummary <- mapResponse%>%
+  group_by(operateMarine,operateFresh)%>%
+    summarise(median.min = round(median(Duration.s)/60, digits = 1),
+            count = n(),
+            elodeaCount = sum(wasInElodea=="Yes", na.rm = TRUE))
+
+#Summary of respondents without mapping response
+non.mapResSummary <- mapNonRes%>%
+  group_by(operateMarine,operateFresh)%>%
+  summarise(median.min = round(median(Duration.s)/60, digits = 1),
+            count = n(),
+            elodeaCount = sum(wasInElodea=="Yes", na.rm = TRUE))
+```
+
+Respondent count for elodea infestation, n=51
+```{r}
+elodeaLocFreq <- features4%>%
+  distinct(responseID, .keep_all=T)%>%  #Note, important to set the dot in front of keep_all!!!
+  filter(wasInElodea=="Yes")%>%
+  select(responseID, elodeaLoc1, elodeaLoc2, elodeaLoc3)%>% 
+  gather(type, value=location, elodeaLoc1, elodeaLoc2, elodeaLoc3)%>%
+  filter(location!="I cannot remember"&location!=""&location!="Campbell Lake")%>%  #taking out blanks and miscoding
+  group_by(location)%>%
+  summarise(count=n())
+
+knitr::kable(elodeaLocFreq, caption = "Count of respondents visiting waterbodies with known elodea infestations in 2018, n=51")%>%
+  kableExtra::kable_styling()
+```
+
+Table: Descriptive statistics related to personal operators who gave mapping answers, n=324
+```{r}
+dataSummary <- features4 %>%
+  distinct(responseID, .keep_all=T)%>%
+  filter(type=="personal")%>%
+  select(Income, age, pax, routeCount,totalKmPre,hCost, YrCostPre, totalTripsPre, totalTripsPost) # select variables to summarise
+
+tidySummary <- summarytools::descr(dataSummary, stats = c("mean", "sd", "cv","min","q1","med","q3","max","pct.valid"))
+Statistic <- row.names(tidySummary) # extracting row names from the matrix above
+tidySummary<- data.frame(tidySummary)%>% 
+  mutate_at(1:9, funs(round(.,0)))
+tidySummary <-cbind(Statistic, tidySummary) #adding variable names back in
+
+names(tidySummary)[names(tidySummary)=="age"] <- "Age"#renaming misspelled column
+names(tidySummary)[names(tidySummary)=="hCost"] <- "Operating cost $/h"
+names(tidySummary)[names(tidySummary)=="YrCostPre"] <- "Operating cost $/year"
+names(tidySummary)[names(tidySummary)=="totalTripsPre"] <- "Trips/year"
+names(tidySummary)[names(tidySummary)=="totalKmPre"] <- "Km/year"
+names(tidySummary)[names(tidySummary)=="totalTripsPost"] <- "Trips/year with elodea"
+names(tidySummary)[names(tidySummary)=="pax"] <- "Passengers"
+names(tidySummary)[names(tidySummary)=="routeCount"] <- "Number of unique routes"
+
+knitr::kable(tidySummary, caption = "Summary statistics for personal operators with mapping answers, n=324")%>%
+  kableExtra::kable_styling()
+```
+
+Table: Descriptive statistics related to all respondents' AIS concern for specific sectors , n=372
+```{r}
+concSummary <- features4 %>%
+  distinct(responseID, .keep_all=T)%>%
+  select(sportfishConc,boatingSafetyConc,recValueConc,businessConc,realEstateConc,subsistConc,biodivConc,commFishConc) # select variables to summarise
+
+tidyCon <- summarytools::descr(concSummary, stats = c("min","med","max","pct.valid"))
+Statistic <- row.names(tidyCon) # extracting row names from the matrix above
+tidyCon<- data.frame(tidyCon)%>% 
+  mutate_at(1:8, funs(round(.,0)))
+tidyCon <-cbind(Statistic, tidyCon) #adding variable names back in
+
+names(tidyCon)[names(tidyCon)=="sportfishConc"] <- "Sport fishing"#renaming column
+names(tidyCon)[names(tidyCon)=="boatingSafetyConc"] <- "Boating safety"
+names(tidyCon)[names(tidyCon)=="recValueConc"] <- "Recreation value"
+names(tidyCon)[names(tidyCon)=="businessConc"] <- "Businesses"
+names(tidyCon)[names(tidyCon)=="realEstateConc"] <- "Real estate values"
+names(tidyCon)[names(tidyCon)=="subsistConc"] <- "Subsistence"
+names(tidyCon)[names(tidyCon)=="biodivConc"] <- "Biodiversity"
+names(tidyCon)[names(tidyCon)=="commFishConc"] <- "Commercial fishing"
+
+
+knitr::kable(tidyCon, caption = "Summary statistics for all rspondents' AIS concerns in specific sectors, n=324")%>%
+  kableExtra::kable_styling()
+```
+
+##Survey data analysis
+#Exploratory data analysis
+Table: Statistics of main purpose of route showing main purpose of route by mean ranking
+```{r}
+StatsByPur <- features4 %>%
+  dplyr::group_by(primaryPur)%>%
+  summarise(routeCount = n(),
+            percentAllRoutes = round((n()/nrow(features4))*100,digits=0),
+            meanRank = round(mean(rank),digits=0),
+            meanKm = round(mean(km),digits=0),
+            minKm = round(min(km),digits=0),
+            maxKm= round(max(km), digits=0))%>%
+  arrange(desc(routeCount))
+
+
+names(StatsByPur)[names(StatsByPur)=="primaryPur"] <- "Primary purpose"
+names(StatsByPur)[names(StatsByPur)=="routeCount"] <- "Route count"#renaming column
+names(StatsByPur)[names(StatsByPur)=="percentAllRoutes"] <- "% of all routes"
+names(StatsByPur)[names(StatsByPur)=="meanRank"] <- "Mean rank"
+names(StatsByPur)[names(StatsByPur)=="meanKm"] <- "Mean route in km"
+names(StatsByPur)[names(StatsByPur)=="minKm"] <- "Shortest route in km"
+names(StatsByPur)[names(StatsByPur)=="maxKm"] <- "Longest route in km"
+
+knitr::kable(StatsByPur, caption = "Summary statistics for the primary purpose of routes, n=324")%>%
+  kableExtra::kable_styling()
+
+```
+
+
+
+
+Tables: Annual operating cost followed by operating cost per hour by operator type 
+```{r}
+resSum <- features4%>%
+  group_by(responseID, type)%>%
+  summarise(YrTravelCost = sum(YrCostPre))
+
+#Calculating descriptive stats for annual operating cost by operator type
+TCByType <- resSum%>%
+  group_by(type)%>%
+  summarise(count = n(),
+            mean = round(mean(YrTravelCost,na.rm = TRUE),digits=1),
+            median = round(median(YrTravelCost,na.rm = TRUE),digits=1),
+            sd = round(sd(YrTravelCost,na.rm = TRUE),digits=1),
+            max = round(max(YrTravelCost,na.rm = TRUE),digits=1),
+            min = round(min(YrTravelCost,na.rm = TRUE),digits=1),
+            cv = round(sd/mean, digits=1))
+knitr::kable(TCByType, caption = "Estimated annual operating cost by operator type")%>%
+  kableExtra::kable_styling()
+
+hCByType <- features4%>%
+  group_by(type)%>%
+  summarise(count = n(),
+            mean = round(mean(hCost,na.rm = TRUE),digits=1),
+            median = round(median(hCost,na.rm = TRUE),digits=1),
+            sd = round(sd(hCost,na.rm = TRUE),digits=1),
+            max = round(max(hCost,na.rm = TRUE),digits=1),
+            min = round(min(hCost,na.rm = TRUE),digits=1),
+            cv = round(sd/mean, digits=1))
+
+knitr::kable(hCByType, caption = "Stated hourly operating cost by operator type")%>%
+  kableExtra::kable_styling()
+```
+
+Table: Personal trip characteristics by age group
+```{r}
+#Total distance, total trips, total respondents, and weighted average distance per trip by age group in the personal user group
+ageBinSummary <- featuresPers%>%
+  subset(totalKmPre < 2000)%>%
+  group_by(ageBin)%>%
+  summarise(count = n_distinct(responseID),
+            sumTotalKm = round(sum(totalKmPre),digits =0),
+            sumTrips  = sum(freqPre),
+            wghtAvgDis = round(sumTotalKm/sumTrips, digits=1))
+knitr::kable(ageBinSummary, caption = "Total distance, trips, respondent count, and weighted average distance per trip by age group")%>%
+  kableExtra::kable_styling()
+```
+
+##Clean Drain Dry best practices
+Figure: Stated percentage of time respondent followed clean-drain-dry procedures to minimize transmission of aquatic invasive species by age and annual distance
+```{r}
+#dealing with 50,000 total km of boat travel outlier
+pers3 <- featuresPers%>%
+  subset(totalKmPre < 2000 &
+         Clean != "Did not report")
+
+#colors for plot
+theme <- c('#a63603','#e6550d','#fd8d3c','#fdae6b','#fdd0a2','#feedde')
+#plot
+ggplot(pers3, aes(age, totalKmPre, colour = Clean)) + 
+  geom_point() +
+  geom_hline(aes(yintercept = 0)) + ylim(0,2000) + ylab("km / year")+
+  labs(colour = "CleanDrainDry") + scale_color_manual(values=theme) 
+```
+
+Figure: Stated percentage of time respondent followed clean-drain-dry procedure to minimize transmission of aquatic invasive species by age group (n=312). 
+```{r}
+persAgeBinClean <- dataPers %>%
+    filter(!is.na(ageBin)) %>%
+    group_by(ageBin, Clean) %>%
+    summarise(n = n())
+#965 total respondents, 302 reported age and Clean, 639 did not report Clean, 653 not reporting age
+#plotting proportions of clean drain dry proportions by age bin
+library(ggplot2)
+plot1 <- ggplot(persAgeBinClean, aes(x = ageBin, y = n, fill = Clean)) +
+  geom_bar(stat = 'identity', position = 'fill', aes(fill = Clean)) +
+  labs(x="age group",y="proportion") + 
+  scale_fill_discrete(name = "Clean Drain Dry") + theme_bw() 
+
+plot2 <- ggplot(persAgeBinClean, aes(x = ageBin, y = n, fill = Clean, label = n)) +
+  geom_bar(stat = 'identity', aes(fill = Clean)) +
+  labs(x="age group",y="count") + 
+  scale_fill_discrete(name = "Clean Drain Dry") + 
+  geom_text(aes(y = n, label = n),size = 3, check_overlap = TRUE, position = position_stack(vjust = 0.5)) + 
+  theme_bw()
+
+ggpubr::ggarrange(plot1, plot2, nrow=1, ncol=2, common.legend = TRUE, legend = "right")
+```
+
+Figure: Map of respondents and where they reside color coded by whether repondents gave mapping answers or did not boat (n=848) 
 ```{r}
 vars <- c("mapres","responseID","LocationLongitude.x","LocationLatitude.x","didNotOperate")
 respondentLocations <- data6[vars]
 #eliminting respondents where we could not get location information
-respondentLocations <- subset(respondentLocations, !is.na(LocationLongitude.x))
+respondentLocations <- subset(respondentLocations, !is.na(LocationLongitude))
 respondentLocations$marker <- with(respondentLocations, ifelse(mapres==1, 1, ifelse(mapres==0&didNotOperate==0,0,2)))
-
 
 getColor <- function(respondentLocations) {
   sapply(respondentLocations$marker, function(marker) {
@@ -461,57 +563,39 @@ leaflet(respondentLocations)%>%
     addProviderTiles(providers$Esri.WorldTopoMap)%>%
     addAwesomeMarkers(~LocationLongitude.x, ~LocationLatitude.x, icon=icons, label=~as.character(mapres))%>%
     addLegend("topright", colors = c("green","red", "blue"), labels = c("gave map response","no map response","did not boat"))
-
 ```
 
-#Costs, trip frequency, number of routes, annual operating cost, BY USER GROUP
+##Transmission risk map
+Figure: Respondents' (n=324) boat routes and locations of known elodea occurrence
 ```{r}
-#Creating descriptive stats tables
-Hmisc::describe(features5$hCost )
-Hmisc::describe(features5$YrCostPre)
-
-tableData <- dplyr::select(features5, "hCost", "totalKmPre","totalKmPost", "km", "freqPre", "freqPost", "primaryPur")
-    
-stargazer::stargazer(tableData, digits=0,  out="tables/table1.txt")
-stargazer::stargazer(tableData, digits=0, type = "html", out="tables/table1.html")
+#importing elodea presence data, and boating tracks
+library(geojsonio)
+elodea <- read.csv("appdir/data/elodea.csv", stringsAsFactors = FALSE)
+elodeaTRUE <- subset(elodea, presence=="TRUE")
+Alltracks <- geojson_read("appdir/data/map.geojson",what = "sp")
+NotClean <- geojson_read("appdir/data/NotClean.geojson",what = "sp")
+#Interactive layer display
+clickMap1 <- leaflet(elodeaTRUE, width = "80%", height = 500) %>%
+  setView(-147.3, 62.0, zoom = 5)%>%
+  #Base groups
+  addTiles(group = "OpenStreetMap") %>%
+  addProviderTiles(providers$Esri.WorldTopoMap, group = "Esri Topo")%>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Esri Image")%>%
+  #Overlay groups
+  addCircleMarkers(lat = ~latitude, lng = ~longitude, ~log(infested_area)*10, stroke = F, 
+                   color="#d95f02", weight = 5, group="Elodea infestation" )%>%
+  addPolylines(data=Alltracks, stroke = TRUE, color = "#1b9e77", weight = 2,
+               opacity = 1.0, fill = FALSE, group = "All boat tracks")%>%
+  addPolylines(data=NotClean, stroke = TRUE, color = "#7570b3", weight = 2,
+               opacity = 1.0, fill = FALSE, group = "No clean-drain-dry")%>%
+  #Layers control
+  addLayersControl(
+    baseGroups = c("Esri Topo", "Esri Image","OpenStreetMap"),
+    overlayGroups = c("Elodea infestation", "All boat tracks","No clean drain dry"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+clickMap1
 ```
-
-#Exploratory data analysis
-Table showing main purpose of route by mean ranking
-```{r}
-StatsByPur <- features5 %>%
-  dplyr::group_by(primaryPur)%>%
-  summarise(percentRoutes = n()/nrow(features5),
-            meanRank = mean(rank),
-            count = n())%>%
-  arrange(desc(count))
-  
-write.table(StatsByPur, file = "tables/table2.txt", sep = ",", quote = FALSE, row.names = F)
-
-#getting density data, 9 commercial operators, 15 government, and 741 personal/private
-c <- density(com$hCost)
-g <- density(gov$hCost)
-p <- density(pers$hCost)
-
-#plotting kernel densities
-plot(c)
-plot(g)
-plot(p)
-
-# correlation between income and annual travel cost for personal operators
-
-plot(pers$age, pers$Income)
-```
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -528,6 +612,11 @@ plot(pers$age, pers$Income)
 
 
 
+#creating leaflet map showing all routes
+#leaflet(mapdata) %>%
+#  addTiles() %>%
+#  addPolylines() %>%
+#  addProviderTiles(providers$Stamen.TerrainBackground)
 
 
 
@@ -549,84 +638,5 @@ plot(pers$age, pers$Income)
 
 
 
-# Integrating dynamic with static elements (Source: https://rstudio.github.io/leaflet/shiny.html)
-```{r}
-library(shiny)
-library(leaflet)
-library(RColorBrewer)
 
-ui <- bootstrapPage(
-  tags$style(type = "text/css", "html, body {width:100%;height:100%}"),
-  leafletOutput("map", width = "100%", height = "100%"),
-  absolutePanel(top = 10, right = 10,
-    checkboxInput("select","Show tracks of",
-      list(`boats operated outside Alaska before coming to Alaska` = list("NY", "NJ", "CT"),
-           `boats Operated only in Alaska in 2018` = list(""),
-           `all boats` = list("British Columbia","Washington","Kansas","Yukon Territories",""),
-                selected = ""
-           ),
-      
-        ),
-    checkboxInput("legend", "Show legend", TRUE)
-  )
-)
-
-```
-
-
-```{r}
-server <- function(input, output, session) {
-
-  # Reactive expression for the data subsetted to what the user selected
-  filteredData <- reactive({
-    mapdata[mapdata$freshOutside =="Yes",]
-  })
-
-  # This reactive expression represents the palette function,
-  # which changes as the user makes selections in UI.
-  colorpal <- reactive({
-    colorNumeric(input$colors, quakes$mag)
-  })
-
-  output$map <- renderLeaflet({
-    # Use leaflet() here, and only include aspects of the map that
-    # won't need to change dynamically (at least, not unless the
-    # entire map is being torn down and recreated).
-    leaflet(mapdata) %>% addTiles() %>%
-      fitBounds(~min(long), ~min(lat), ~max(long), ~max(lat))
-  })
-
-  # Incremental changes to the map (in this case, replacing the
-  # circles when a new color is chosen) should be performed in
-  # an observer. Each independent set of things that can change
-  # should be managed in its own observer.
-  observe({
-    pal <- colorpal()
-
-    leafletProxy("map", data = filteredData()) %>%
-      clearShapes() %>%
-      addCircles(radius = ~10^mag/10, weight = 1, color = "#777777",
-        fillColor = ~pal(mag), fillOpacity = 0.7, popup = ~paste(mag)
-      )
-  })
-
-  # Use a separate observer to recreate the legend as needed.
-  observe({
-    proxy <- leafletProxy("map", data = quakes)
-
-    # Remove any existing legend, and only if the legend is
-    # enabled, create a new one.
-    proxy %>% clearControls()
-    if (input$legend) {
-      pal <- colorpal()
-      proxy %>% addLegend(position = "bottomright",
-        pal = pal, values = ~mag
-      )
-    }
-  })
-}
-
-shinyApp(ui, server)
- 
-``` 
 
