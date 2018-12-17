@@ -8,7 +8,7 @@ library(geojsonio)
 
 data <- read.csv("data/featuresApp.csv")
 #map <- readOGR("data/Boater_Joined_2/Boater_Joined_2.shp")
-map <- geojsonio::geojson_read("data/new_joined_output.geojson", what = "sp")
+map <- geojsonio::geojson_read("data/map.geojson", what = "sp")
 
 # ui object
 

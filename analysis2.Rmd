@@ -19,6 +19,7 @@ library(ggplot2)
 library(RColorBrewer)
 library(stringr)
 library(summarytools)
+library(stats)
 
 #features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
 features <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
@@ -225,6 +226,18 @@ write.csv(dataApp, "appdir/data/dataApp.csv" )
 ```
 
 ##Representativeness of the sample
+independent t-test
+```{r}
+PUMS <- read.csv("reference_tables/PUMS.csv", stringsAsFactors = F)
+#F-test if sample variance and ACS variance are the same
+var.test(data6$Income, PUMS$PINCP, alternative = "two.sided")  # using wages & salary income in past 12 months, PINCP - total person's income closely related to "personal income" the survey asked.  F-test result: variances are not equal, so we need to conduct independent t-test assuming unequal variances.
+d1 <- density(data6$Income, na.rm=T)
+d2 <- density(PUMS$PINCP, na.rm=T)
+plot(d1, col="red")
+lines(d2)
+#R assumes unequal variances by default, which is the Welch two-sample t-test
+t.test(data6$Income, PUMS$PINCP, paired=FALSE)
+```
 
 #Sample characteristics
 Response rate, effective sample size, etc. 
@@ -320,7 +333,7 @@ userGroups <- data5%>%
             didNot = sum(didNotOperate))
 ```
 
-#CONSOLIDATE THIS INTO ONE TABLE ... FIX THIS CODE
+
 Number of respondents with map answers, duration of response (if map answered), by user group
 ```{r}
 data5 <- data5%>%
@@ -408,13 +421,11 @@ names(tidyCon)[names(tidyCon)=="subsistConc"] <- "Subsistence"
 names(tidyCon)[names(tidyCon)=="biodivConc"] <- "Biodiversity"
 names(tidyCon)[names(tidyCon)=="commFishConc"] <- "Commercial fishing"
 
-
 knitr::kable(tidyCon, caption = "Summary statistics for all rspondents' AIS concerns in specific sectors, n=324")%>%
   kableExtra::kable_styling()
 ```
 
 ##Survey data analysis
-#Exploratory data analysis
 Table: Statistics of main purpose of route showing main purpose of route by mean ranking
 ```{r}
 StatsByPur <- features4 %>%
@@ -432,17 +443,27 @@ names(StatsByPur)[names(StatsByPur)=="primaryPur"] <- "Primary purpose"
 names(StatsByPur)[names(StatsByPur)=="routeCount"] <- "Route count"#renaming column
 names(StatsByPur)[names(StatsByPur)=="percentAllRoutes"] <- "% of all routes"
 names(StatsByPur)[names(StatsByPur)=="meanRank"] <- "Mean rank"
-names(StatsByPur)[names(StatsByPur)=="meanKm"] <- "Mean route in km"
+names(StatsByPur)[names(StatsByPur)=="meanKm"] <- "Average route in km"
 names(StatsByPur)[names(StatsByPur)=="minKm"] <- "Shortest route in km"
 names(StatsByPur)[names(StatsByPur)=="maxKm"] <- "Longest route in km"
 
 knitr::kable(StatsByPur, caption = "Summary statistics for the primary purpose of routes, n=324")%>%
   kableExtra::kable_styling()
-
 ```
 
+Figure: Plotting concerns against primary purpose of trip by 
+```{r}
+routeCount <- features4%>%
+  group_by(responseID)%>%
+  summarise(routeCount = n(),
+            fishPur = n("Other"               "Cabin"               "Sport Fishing"       "Subsistence Fishing"
+ [5] "Hunting"             "Camping"             "Bird watching"       "Wildlife watching"  
+ [9] "Lodge"               "Hiking"              "Mining" 
+            %
+  select(responseID, primaryPur, rank, sportfishConc,boatingSafetyConc,recValueConc,businessConc,realEstateConc,subsistConc,biodivConc,commFishConc)%>%
+  mutate(routeCount)
 
-
+```
 
 Tables: Annual operating cost followed by operating cost per hour by operator type 
 ```{r}
@@ -570,10 +591,12 @@ Figure: Respondents' (n=324) boat routes and locations of known elodea occurrenc
 ```{r}
 #importing elodea presence data, and boating tracks
 library(geojsonio)
+library(leaflet)
 elodea <- read.csv("appdir/data/elodea.csv", stringsAsFactors = FALSE)
 elodeaTRUE <- subset(elodea, presence=="TRUE")
 Alltracks <- geojson_read("appdir/data/map.geojson",what = "sp")
 NotClean <- geojson_read("appdir/data/NotClean.geojson",what = "sp")
+
 #Interactive layer display
 clickMap1 <- leaflet(elodeaTRUE, width = "80%", height = 500) %>%
   setView(-147.3, 62.0, zoom = 5)%>%
@@ -585,9 +608,9 @@ clickMap1 <- leaflet(elodeaTRUE, width = "80%", height = 500) %>%
   addCircleMarkers(lat = ~latitude, lng = ~longitude, ~log(infested_area)*10, stroke = F, 
                    color="#d95f02", weight = 5, group="Elodea infestation" )%>%
   addPolylines(data=Alltracks, stroke = TRUE, color = "#1b9e77", weight = 2,
-               opacity = 1.0, fill = FALSE, group = "All boat tracks")%>%
+               opacity = 1.0, fill = FALSE, group = "All boat tracks (green)")%>%
   addPolylines(data=NotClean, stroke = TRUE, color = "#7570b3", weight = 2,
-               opacity = 1.0, fill = FALSE, group = "No clean-drain-dry")%>%
+               opacity = 1.0, fill = FALSE, group = "No clean-drain-dry (purple)")%>%
   #Layers control
   addLayersControl(
     baseGroups = c("Esri Topo", "Esri Image","OpenStreetMap"),
@@ -596,46 +619,6 @@ clickMap1 <- leaflet(elodeaTRUE, width = "80%", height = 500) %>%
   )
 clickMap1
 ```
-
-
-
-
-
-
-#High priority TASKS
-
-2) can I visualize the frequencies on map? 
-3) visualize out of state origin tracks
-
-# Low priority tasks
-3) Does a hex map make sense?
-
-
-
-#creating leaflet map showing all routes
-#leaflet(mapdata) %>%
-#  addTiles() %>%
-#  addPolylines() %>%
-#  addProviderTiles(providers$Stamen.TerrainBackground)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
