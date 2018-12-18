@@ -20,8 +20,8 @@ library(sampling)
 library(kableExtra)
 
 #Importing dataset, renaming columns
-#data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/registration/DMV_registered_boats_data_2017.csv", stringsAsFactors=FALSE)
-hisReg <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/registration/DMV_registered_boats_data_2017.csv", stringsAsFactors=FALSE)
+hisReg <- read.csv("D:/Dropbox/DATA/2018_boat_survey/registration/DMV_registered_boats_data_2017.csv", stringsAsFactors=FALSE)
+#hisReg <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/registration/DMV_registered_boats_data_2017.csv", stringsAsFactors=FALSE)
 
 register <- hisReg
 #renaming columns
