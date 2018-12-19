@@ -1,14 +1,16 @@
 ---
-title: "Analysis of responses from a statewide survey with registered boat owners in Alaska, fall 2018"
+title: Analysis of responses from a statewide survey with registered boat owners in
+  Alaska, fall 2018
 author: "Tobias Schwoerer"
-date: "December17, 2018"
+date: "December 18, 2018"
 output: html_document
-editor_options: 
-  chunk_output_type: console
+
 ---
 
 Data import
-```{r}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
 library(jsonlite)
 library(geojson)
 library(leaflet)
@@ -33,7 +35,7 @@ data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors =
 
 Clean and mutate features.csv
 Each row in this file is associated with a track a respondent entered in the mapping tool of the survey (custom programmed in Qualtrics). First, we recode trip frequencies as stated by respondents in form of an interval. We take the mean of the interval for further analysis. Note, respondents stated trip frequencies for the 2018 summer season (current summer) and answered a hypothetical question how the number of trips would have changed would elodea clog some of the waterbodies they boated on.   
-```{r}
+```{r, echo = FALSE}
 #calculating pre elodea trip frequencies
 features2 <- features%>%
   left_join(freqCoding,  by = c("trackFrequ"="Coding"))   #recoding trip frequencies
@@ -50,7 +52,7 @@ names(features3)[names(features3)=="Upper"] <- "UpperPost" #Renaming columns for
 ```
 
 Calculating annual operating cost per route. Here, we calculate the annual km as the product of the stated trip frequency, round-trip length in km (calculated by ArcGIS), the stated hourly boat operating cost, and the inverse of the assumed average travel speed of 10 miles/h (16km/h). Both pre- and post-invasion costs are calculated. 
-```{r}
+```{r, echo = FALSE}
 #hCost: hourly operating cost
 features3$hCost <- rowMeans(features3[c("hCostHigh","hCostLow")], na.rm=TRUE) #calculating the hCost interval mean for furthe ranalysis, ignore missing 
 features3$hCost[features3$hCost==20000] <- NA  #outliers and missing value
@@ -98,7 +100,7 @@ features3 <- features3 %>%
 ```
 
 Missing data, outliers, and recoding on other variables. Associating each route with either private, commercial, or government related operators. 
-```{r}
+```{r, echo = FALSE}
 #INCOME recoding, cleaning, and dealing with missing data on income
 incCoding <- read.csv("reference_tables/incCoding.csv", stringsAsFactors = FALSE)
 features4 <- features3%>%
@@ -156,7 +158,7 @@ featuresGov <- subset(features4, type=="government")
 ```
 
 Preparing features file for leaflet shiny app
-```{r}
+```{r, echo = FALSE}
 #Consolidating levels for several categorical variables which will be used to subset the tracks that are shown. note, leaves the class of these variables as character 
 featuresApp <- features4
 featuresApp$wasInElodea <- with(featuresApp, ifelse(wasInElodea=="Yes","Yes","No"))
@@ -170,7 +172,7 @@ write.csv(featuresApp, "boater_app/data/featuresApp.csv" )
 ```
 
 Clean and mutate data.csv file 
-```{r}
+```{r, echo = FALSE}
 #trimming % sign in character string, then converting character to numeric, doing for percentCom and percentGov
 data2 <- data
 data2$percentCom <- gsub("[[:punct:]]", " ", data2$percentCom)
@@ -233,7 +235,7 @@ dataGov <- subset(data5, type=="government")
 ```
 
 Preparing data file for leaflet shiny app
-```{r}
+```{r, echo = FALSE}
 dataApp <- data5
 dataApp$wasInElodea <- with(dataApp, ifelse(wasInElodea=="Yes","Yes","No"))
 dataApp$freshOutside <- with(dataApp, ifelse(freshOutside=="Yes","Yes","No or did not report"))
@@ -272,6 +274,7 @@ otherInfo <- effsample%>%
             returnedDollar = sum(returnIncentive),
             removeList = sum(requestsRemove))
 ```
+
 Of the 5095 mailed envelopes, 3.6% were undeliverable for an effective sample size of 4914. Of these the survey received 965 responses for a response rate of 19.6%. The effective sample contained 220 business contacts which resulted in 21 business responses. Some respondents (0.5%) reported to have online difficulties with mapping their boat tracks and 0.3% reported to not have Internet. 21 respondents returned the $1 bill by mailing the bill back to the research team. Two respondents requested to be taken off the mailing list for the reminder mailings.  
 
 Of the 965 respondents, 36 percent solely operated in marine waters and consequently were not asked to provide mapping detail of their 2018 boat tracks. 29 percent (n=280) of respondents solely operated in freshwater, while 18 percent (n=175) operated in both fresh and marine waters which explains why the resulting geographic information on boat tracks includes tracks in marine waters. 15 percent reported no to have used their boat in 2018.  
@@ -292,6 +295,10 @@ userGroups <- data5%>%
             FreshOnlyCount = sum(operateFresh1),
             BothCount = sum(operateBoth1))
 ```
+
+Of the 965 respondents, roughly a third (322) gave mapping answers while the remainder largely operated in marine waters (350 of 643 non-map responses) and consequently was not asked about their boating routes. A total of 137 respondents who indicated to have operated in Alaska freshwater did not use the mapping tool. One of the reasons for this non-response to the mapping tool was the tool's complexity as voiced to the research team by less than 1 percent of responsents.  
+
+As expected, respondents with mapping answers took considerable time longer to answer the survey. Response times for these respondents was within the approximated time noted in the consent part of the survey's introduction section and amounted to 12 minutes if the respondent operated only in freshwater and 14 minutes if operating in fresh and marine waters. Response times for respondents without mapping their routes was 7 minutes for freshwater only and 10 minutes for operators in fresh and marine waters. 
 
 Tables: Number of respondents with and without mapping answers
 ```{r}
@@ -329,7 +336,7 @@ knitr::kable(non.mapResSummary, caption = "Summary of respondents without mappin
 
 ###1.2 Representativeness of the sample
 We conducted an independent t-test to see how representative respondents to the survey were in comparison to the general Alaska population. Ideally we had hoped to compare the sample to the sample frame (population) of registered boaters but there is no numeric variable that could be of use to conduct such a comparison. The only available metric to conduct this comparison is personal income reported in the survey which can be compared to the personal income (PINCP variable) in the PUMS dataset for Alaska associated with the 2017 American Community Survey. As to be expected, the result of the t-test shows dissimilarity in samples (p<0.000, t=47.7, df=2313.3). The mean income is much higher in the sample (91,398) compared to the observed population mean in the ACS (38,624) The Figure below shows the sample distribution of income in red while the ACS income distribution is shown in black. 
-```{r}
+```{r, echo=FALSE}
 PUMS <- read.csv("reference_tables/PUMS.csv", stringsAsFactors = F)
 #F-test if sample variance and ACS variance are the same
 var.test(data6$Income, PUMS$PINCP, alternative = "two.sided")  # using PINCP - total person's income closely related to "personal income" the survey asked.  F-test result: variances are not equal, so we need to conduct independent t-test assuming unequal variances.
@@ -341,31 +348,31 @@ lines(d2)
 t.test(data6$Income, PUMS$PINCP, paired=FALSE)
 ```
 
-#INSERT age and income of entire sample
 
 
 ###1.3 Geographic representativeness
 The  Qualtrics online survey software collects respondent information such as IP addresses which can be used to determine the location the respondent was in when answering the survey. If the respondent completed the survey using the Qualtrics Offline App on a GPS-enabled device, this data will be an accurate representation of the respondent’s location. For all other respondents, the location is an approximation determined by comparing the participant’s IP address to a location database. Inside the United States, this data is typically accurate to the city level.
 
-There was considerable representation of out-of-state responses as the following maps show. 
+Based on this information, we created the following maps. The first map shows that registered boat owners who responded while in Alaska were mainly from the Southcentral Alaska (435), Southeast Alaska (126), Interior (62), Cordova (18), Kenai (26), Kodiak (18), Bristol Bay (7), Y-K Delta (7), Norton Sound (4), and northern Alaska (4).
+
+There was considerable representation from out-of-state responses as well (138)  and Hawaii (2). Some of the outside responses may also be by boat owners responding while on vacation or other trips. 
 
 Figure: Map showing clustered locations for the 965 respondents
-```{r}
+```{r, echo=FALSE}
 #creating table of unique respondents and locations 
 locations <- data4 %>% 
   distinct(responseID, LocationLatitude, LocationLongitude) %>% 
   drop_na()
 
-data.table::data.table(locations)
-
-leaflet(locations)%>%
+leaflet(locations, width = "100%", height = 500)%>%
     addTiles()%>%
     addProviderTiles(providers$Esri.WorldTopoMap)%>%
     addMarkers(lat = ~LocationLatitude, lng = ~LocationLongitude, 
     clusterOptions = markerClusterOptions(), popup = ~responseID)
 ```
 
-#FIX THIS CODE
+Respondents from lower 48 locations were more likely to report that they did not boat in Alaska in 2018 as shown by the blue markers in the map below. No map response was geographically equally distributed. 
+
 Figure: Map of respondents and where they reside color coded by whether repondents gave mapping answers or did not boat (n=848) 
 ```{r}
 vars <- c("mapres","responseID","LocationLongitude.x","LocationLatitude.x","didNotOperate1")
@@ -392,18 +399,20 @@ icons <- awesomeIcons(
   markerColor = getColor(respondentLocations)
 )
 
-leaflet(respondentLocations)%>%
+leaflet(respondentLocations, width = "100%", height = 600)%>%
     addTiles()%>%
     addProviderTiles(providers$Esri.WorldTopoMap)%>%
-    addAwesomeMarkers(~LocationLongitude.x, ~LocationLatitude.x, icon=icons, label=~as.character(mapres))
-#%>%
-    #addLegend("topright", colors = c("green","red", "blue"), labels = c("gave map response","no map response","did not boat"))
+    addAwesomeMarkers(~LocationLongitude.x, ~LocationLatitude.x, icon=icons, label=~as.character(mapres))%>%
+    addLegend("topright", colors = c("green","red", "blue"), labels = c("gave map response","no map response","did not boat"))
 
 ```
 
 
 ##2. Elodea and other AIS concern
-Table: Respondent count for boat owners who took their boat into elodea infested waterbodies in 2018, n=51 
+
+The survey asked whether respondents took their boats into any elodea infested waterbodies. The most frequented elodea-infested waterbody as reported by 38 respondents was the Chena River (Chena Slough), which consequently is the most concerning elodea infestation subject to boat transmission in the state. Less frequented are the Eyak River (8), Eyak Lake (6), and Alaganik Slough (3). Relatively speaking, these frequencies in the Cordova area are large relative to the population of boaters in this area. 
+
+Table: Respondent count for boat owners who took their boat into elodea infested waterbodies in 2018, n=51
 ```{r}
 elodeaLocFreq <- features4%>%
   distinct(responseID, .keep_all=T)%>%  #Note, important to set the dot in front of keep_all!!!
@@ -419,6 +428,9 @@ knitr::kable(elodeaLocFreq, caption = "Count of respondents visiting waterbodies
 ```
 
 ###2.1 Elodea transmission risk map
+Data on boaters' mapping responses were used to create the following risk map showing the elodea infestations by size and the reported boat routes. The red circles indicate the relative sive of local elodea infestations as reported in the AKEPIC database areal extent of each infestation. For illustrative purposes, the circle diameter is proportional to log(infested area)*10. This illustration shows how much more extensive the infestations are in the Cordova area compared to infestations in other parts of the state which is consistent with the hypothesis that elodea first established in Cordova. 
+
+The map below also shows the extent of routes taken by boaters who are not following a 100% clean drain dry best practice. The extent to not adhering to this best practice is geographically equally distributed across the state. This result suggests that outreach efforts to follow clean drain dry procedures should be broad in scope across Alaska but particularly focused on Fairbanks, the Interior and the Cordova area. 
 Figure: Respondents' (n=324) boat routes and locations of known elodea occurrence
 ```{r}
 #importing elodea presence data, and boating tracks
@@ -430,7 +442,7 @@ Alltracks <- geojson_read("boater_app/data/map.geojson",what = "sp")
 NotClean <- geojson_read("boater_app/data/NotClean.geojson",what = "sp")
 
 #Interactive layer display
-clickMap1 <- leaflet(elodeaTRUE, width = "80%", height = 500) %>%
+clickMap1 <- leaflet(elodeaTRUE, width = "100%", height = 500) %>%
   setView(-147.3, 62.0, zoom = 5)%>%
   #Base groups
   addTiles(group = "OpenStreetMap") %>%
@@ -446,15 +458,48 @@ clickMap1 <- leaflet(elodeaTRUE, width = "80%", height = 500) %>%
   #Layers control
   addLayersControl(
     baseGroups = c("Esri Topo", "Esri Image","OpenStreetMap"),
-    overlayGroups = c("Elodea infestation", "All boat tracks","No clean drain dry"),
+    overlayGroups = c("Elodea infestation", "All boat tracks (green)","No clean-drain-dry (purple)"),
     options = layersControlOptions(collapsed = FALSE)
   )
 clickMap1
 ```
 
+Analysis of the routes taken by respondents who indicated to have boated outside Alaska first before bringing their boat to Alaska freshwater showed that boats were taken to Skilak Lake, Tustumena Lake, the Susitna River out of Talkeetna going North, and the Chena River. There is also one route in marine waters in Port of Valdez and Southeast Alaska. 
+
+Figure: Map of boat routes taken by boaters who first boated outside Alaska in 2018, n=4
+```{r}
+#importing elodea presence data, and boating tracks
+library(geojsonio)
+library(leaflet)
 
 
-Table: Descriptive statistics related AIS concern for specific sectors, n=372
+freshOutside <- geojson_read("boater_app/data/FreshOutside.geojson",what = "sp")
+Alltracks <- geojson_read("boater_app/data/map.geojson",what = "sp")
+
+#Interactive layer display
+clickMap2 <- leaflet(freshOutside, width = "100%", height = 600) %>%
+  setView(-147.3, 62.0, zoom = 5)%>%
+  #Base groups
+  addTiles(group = "OpenStreetMap") %>%
+  addProviderTiles(providers$Esri.WorldTopoMap, group = "Esri Topo")%>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Esri Image")%>%
+  #Overlay groups
+  addPolylines(data=Alltracks, stroke = TRUE, color = "#2c7bb6", weight = 2,
+               opacity = 1.0, fill = FALSE, group = "All boat tracks (blue)")%>%
+  addPolylines(data=freshOutside, stroke = TRUE, color = "#d7191c", weight = 2,
+               opacity = 1.0, fill = FALSE, group = "Boaters who came from outside Alaska (red)")%>%
+  #Layers control
+  addLayersControl(
+    baseGroups = c("Esri Topo", "Esri Image","OpenStreetMap"),
+    overlayGroups = c("All boat tracks (blue)","Boaters who came from outside Alaska (red)"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+clickMap2
+```
+
+Alaska boat owners' concerns related to AIS impact on sport fishing are highest followed by biodiversity , subsistence, and recreation values, as shown by the median rank in the next Table. Respondents were less concerned about impacts on businesses, real estate, and commercial fishing as well as boating safety.
+
+Table: Descriptive statistics related to respondents' rating of concern for AIS affecting specific sectors, n=372
 ```{r}
 concSummary <- features4 %>%
   distinct(responseID, .keep_all=T)%>%
@@ -475,11 +520,15 @@ names(tidyCon)[names(tidyCon)=="subsistConc"] <- "Subsistence"
 names(tidyCon)[names(tidyCon)=="biodivConc"] <- "Biodiversity"
 names(tidyCon)[names(tidyCon)=="commFishConc"] <- "Commercial fishing"
 
-knitr::kable(tidyCon, caption = "Summary statistics for all rspondents' AIS concerns in specific sectors, n=324")%>%
+knitr::kable(tidyCon, caption = "Descriptive statistics related to respondents' rating of concern for AIS affecting specific sectors, n=372")%>%
   kableExtra::kable_styling()
 ```
 
+
 ###2.2 Alaska boat owners' boating and boat purchases occurring outside of Alaska
+
+The survey also contained questions on the purchase of boats from outside of Alaska and whether Alaska boat owners boated outside Alaska before putting their boat into Alaska freshwater in 2018. Only four respondents (less than 1% of respondents reporting, n=311) indicated to have boated outside of Alaska in 2018 before bringing their boat to Alaska. One respondent brought a boat used in Kansas, a state with known zebra mussle (*Dreissena polymorpha*) infestations. Other outside locations included Washington state, and British Columbia and the Yukon Territories (Table). 
+
 Table: Boat owner count for owners who took their boat out of state before boating in Alaska in 2018
 ```{r}
 #Total distance, total trips, total respondents, and weighted average distance per trip by age group in the personal user group
@@ -492,6 +541,8 @@ outsidersSummary <- features4%>%
 knitr::kable(outsidersSummary, caption = "Percentage of boat owners boating outside of Alaska in 2018")%>%
   kableExtra::kable_styling()
 ```
+
+Boat owners who take their boats outside of Alaska are more likely to bring AIS into Alaska. We compared the characteristics of boat owners who take their boats outside of Alaska (Table) with the average boat owner responding to the survey (Table). Due to the small sample size of outside boaters, we caution the reader to place too much emphasis on the results.  Outside boaters showed lower mean income, are perhaps retired, but operate slightly more expensive boats as shown by the higher than average hourly operating cost. Also, these boat owners had shorter the average annual boating distances.   
 
 Table: Boat owner characteristics who boated outside Alaska before boating in Alaska
 ```{r}
@@ -519,7 +570,9 @@ knitr::kable(Summary, caption = "Summary statistics for operators who took their
   kableExtra::kable_styling()
 ```
 
-Table: Outside purchases of boats
+Additional analysis was conducted regarding the number of boats purchased outside Alaska, when and where these boats were purchased and whether they were purchased used or new. Since the survey asked about historical information, this question is most likely biased in terms of whether respondents remembered correctly. This bias may have resulted in underreported purchases that occurred farther in the past and may have contributed to the increase in  purchases shown in the Figure below. If we ignore this recall bias, it appears that there is an increased influx of used boats from outside Alaska that comprise significant AIS risk. 
+
+Figure: Reported historical purchase of boats from outside Alaska
 ```{r}
 purOutside <- data6%>%
   filter(purchaseOutside=="Yes")%>%
@@ -537,6 +590,8 @@ h3plot <- ggplot(h3, aes(x = purchaseYear, y = count, fill = purchaseType)) +
   scale_fill_discrete(name = "Purchase type") + theme_bw()
 h3plot
 ```
+
+Boats that are operating in Alaska and were purchased out of state are originating all across the lower 48 with some originating in Canadian provinces and territories. Most concerning are used boats purchased in mussle infested states such as Michigan, Wisconsin, Indiana, Kansas, Texas, and Colorado (Figure). Due to the analysis being based on a survey and not a census of Alaska boat owners, the map below shows only a 2018 snapshot for a selection of boat owners responding to the survey. Likely, used boats are purchased by Alaska's registered boat owners from all lower 48 states and Canadian provinces and territories.  
 
 Map: States where boats were purchased by type of purchase
 ```{r}
@@ -561,7 +616,7 @@ purLocGeo[is.na(purLocGeo)] <- 0
 #Minichart map for proportion of used new boats being bought
 library(leaflet)
 
-basemap <- leaflet(width = "100%", height = "650px") %>%
+basemap <- leaflet(width = "80%", height = "650px") %>%
   addTiles()%>%
   addProviderTiles(providers$OpenStreetMap.Mapnik)
 
@@ -577,21 +632,8 @@ basemap %>%
 ```
 
 ###2.3 Clean Drain Dry 
-Figure: Stated percentage of time respondent followed clean-drain-dry procedures to minimize transmission of aquatic invasive species by age and annual distance
-```{r}
-#dealing with 50,000 total km of boat travel outlier
-pers3 <- featuresPers%>%
-  subset(totalKmPre < 2000 &
-         Clean != "Did not report")
 
-#colors for plot
-theme <- c('#a63603','#e6550d','#fd8d3c','#fdae6b','#fdd0a2','#feedde')
-#plot
-ggplot(pers3, aes(age, totalKmPre, colour = Clean)) + 
-  geom_point() +
-  geom_hline(aes(yintercept = 0)) + ylim(0,2000) + ylab("km / year")+
-  labs(colour = "CleanDrainDry") + scale_color_manual(values=theme) 
-```
+Interesting to note, more than half (61%) of survey respondents who answered the question on whether they follow clean drain dry best practices indicated that they do this all the time. Only 16 percent reported to never follow this practice, and 8% each follow this practice 25 percent, 50 percent, and 75 percent of the time. Figure XA shows that the lowest proportion of 100% compliance with clean drain dry was reported by boaters between the ages of 41 and 50. Figure XB also shows that respondents are normally distributed across ages, with boaters between the ages of 51 and 70 most frequently represented. 
 
 Figure: Stated percentage of time respondent followed clean-drain-dry procedure to minimize transmission of aquatic invasive species by age group (n=312). 
 ```{r}
@@ -617,8 +659,30 @@ plot2 <- ggplot(persAgeBinClean, aes(x = ageBin, y = n, fill = Clean, label = n)
 ggpubr::ggarrange(plot1, plot2, nrow=1, ncol=2, common.legend = TRUE, legend = "right")
 ```
 
+Figure X is used to look at clean drain dry compliance across age groups and the annual boating distances  to see which age group may represent a higher risk category in terms of long-range transmission risk due to not following clean drain dry procedures. Two age groups with longer than average boating distances are the ages between 31 and 40 and ages between 51 and 60. While the former group showed relatively high compliance with clean drain dry, any outreach efforts on clean drain dry would effectively target the age group of 51 to 60 and older.   
 
-##Boat trip characteristics
+Figure: Stated percentage of time respondent followed clean-drain-dry procedures to minimize transmission of aquatic invasive species by age and annual distance
+```{r}
+#dealing with 50,000 total km of boat travel outlier
+pers3 <- featuresPers%>%
+  subset(totalKmPre < 2000 &
+         Clean != "Did not report")
+
+#colors for plot
+theme <- c('#a63603','#e6550d','#fd8d3c','#fdae6b','#fdd0a2','#feedde')
+#plot
+ggplot(pers3, aes(age, totalKmPre, colour = Clean)) + 
+  geom_point() +
+  geom_hline(aes(yintercept = 0)) + ylim(0,2000) + ylab("km / year")+
+  labs(colour = "CleanDrainDry") + scale_color_manual(values=theme) +theme_bw()
+```
+
+
+
+##Boater and trip characteristics
+
+Analysis of the recorded boating tracks via the mapping tool of the survey showed that boaters between the ages of 51 and 60 travel the longest annually and show the highest annual trip frequencies. Younger boaters, particularly the ages between 21 and 40, are more likely to have longer boat routes and less frequent trips than older boaters. The weighted average boating distance per trip for the younger age group is 50 to 100% longer than the weighted average boating distance per trip of other age groups, while the annual trip frequency is less than a tenth of the annual trip frequency of the 51-60 age group for example.  
+
 Table: Total distance, total trips, total respondents, and weighted average distance per trip by age group in the personal user group
 ```{r}
 ageBinSummary <- featuresPers%>%
@@ -632,19 +696,7 @@ knitr::kable(ageBinSummary, caption = "Total distance, trips, respondent count, 
   kableExtra::kable_styling()
 ```
 
-Table: Personal trip characteristics by age group
-```{r}
-#Total distance, total trips, total respondents, and weighted average distance per trip by age group in the personal user group
-ageBinSummary <- featuresPers%>%
-  subset(totalKmPre < 2000)%>%
-  group_by(ageBin)%>%
-  summarise(count = n_distinct(responseID),
-            sumTotalKm = round(sum(totalKmPre),digits =0),
-            sumTrips  = sum(freqPre),
-            wghtAvgDis = round(sumTotalKm/sumTrips, digits=1))
-knitr::kable(ageBinSummary, caption = "Total distance, trips, respondent count, and weighted average distance per trip by age group")%>%
-  kableExtra::kable_styling()
-```
+Not surprisingly the main purpose of all recorded routes in the mapping tool was sport fishing, amounting to half of all 758 routes that were marked by respondents. Non-specified purpose category ranked second with 20 percent of all routes followed by cabin related trips and hunting (9 and 7 percent). Camping is associated with the longest average route distance of 153 km while bird watching and cabin related trips have the lowest average route distances. The purpose that is associated with the highest range of route distances was also camping where routes ranges from 1km to 883 km followed by the other category and sport fishing (0km to 497km).  
 
 Table: Statistics related to the main purpose of routes
 ```{r}
@@ -670,6 +722,10 @@ names(StatsByPur)[names(StatsByPur)=="maxKm"] <- "Longest route in km"
 knitr::kable(StatsByPur, caption = "Summary statistics for the primary purpose of routes, n=324")%>%
   kableExtra::kable_styling()
 ```
+
+Since the survey was aimed at improved understanding of AIS transmission risk related to Alaska's boaters, respondents to the mapping tool and their characteristics were of particular interest. Below, we show descriptive statistics to the boaters who plotted their boating routes in the survey's mapping tool and who boated for personal reasons. Final respondents to the survey is largely comprised of this group of respondents. 
+
+As expected, the average respondent's income (median 87500) is much higher compared to the statewide population average (median 36000). This difference is partly explained by the cost ot operate boats which was estimated for the average boater to equal 3429. Boater age is normally distributed across the sample with a mean of 55. Additionally, the average Alaska registered boat owner operating primarily in fresh water has two unique routes, travels 262km a year, and takes on average 14 trips. The average operating cost per hour is 20/h. 
 
 Table: Descriptive statistics related to personal operators who gave mapping answers, n=324
 ```{r}
@@ -698,6 +754,7 @@ knitr::kable(tidySummary, caption = "Summary statistics for personal operators w
 ```
 
 ##Boat operating cost
+
 Tables: Annual operating cost followed by operating cost per hour by operator type 
 ```{r}
 resSum <- features4%>%

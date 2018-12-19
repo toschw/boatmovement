@@ -1,17 +1,22 @@
 ---
-title: "Study of freshwater AIS pathway: Alaska boat ownership"
+title: 'Study of freshwater AIS pathway: Alaska boat ownership'
 author: "Tobias Schwoerer"
 date: "November 29, 2018"
-output: html_document
-editor_options: 
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+editor_options:
   chunk_output_type: console
+  always_allow_html: yes
 ---
 
 ##1. Sample frame 
 The sample frame was created with a data dump from the Alaska Department of Motorvehicles (ADMV) registration database as of December 2017. The database contains any current and historic registered boats including first owners' address , multi-owners' names, and information about boat characteristics including boat length, engine type and power, etc. The data dump was received through Tammy Davis at the Alaska Department of Fish and Game, the study's sponsor. 
 
 The data was cleaned of any space occurring after text strings, columns were renamed for shorter code, and ZIP codes were trimmed. Registered house boats and commercial fishing boats were not included in the sample frame. A subset of this database was then further used that showed only the currently registered boats with registration expiring in 2018 or later. In order to test whether a stratified random sample was preferred over a simple random sample, we included information on geographic regions, approximately consistent with Alaska's HUC6 watersheds.  
-```{r include=FALSE}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
 
 library(dplyr)
 library(tidyr)
@@ -152,6 +157,7 @@ knitr::kable(Ownership_short, caption = "Owner and boat count by boat type and r
 ```
 
 ###1.2. Percentage of boat types by region of owner residence, 2018
+
 ```{r echo=FALSE}
 library(leaflet)
 library(leaflet.minicharts)
