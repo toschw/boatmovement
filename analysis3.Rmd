@@ -4,7 +4,8 @@ title: Analysis of responses from a statewide survey with registered boat owners
 author: "Tobias Schwoerer"
 date: "December 18, 2018"
 output: html_document
-
+editor_options: 
+  chunk_output_type: console
 ---
 
 Data import
@@ -24,13 +25,13 @@ library(summarytools)
 library(stats)
 library(leaflet.minicharts)
 
-features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
-#features <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+#features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+features <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
 names(features)[names(features)=="LenghtKM"] <- "km"#renaming misspelled column
 freqCoding <- read.csv("reference_tables/freqCoding.csv", stringsAsFactors = FALSE) #this file was created to quickly recode trip frequencies
 
-data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
-#data <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
+#data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
+data <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
 ```
 
 Clean and mutate features.csv
@@ -409,7 +410,6 @@ leaflet(respondentLocations, width = "100%", height = 600)%>%
 
 
 ##2. Elodea and other AIS concern
-
 The survey asked whether respondents took their boats into any elodea infested waterbodies. The most frequented elodea-infested waterbody as reported by 38 respondents was the Chena River (Chena Slough), which consequently is the most concerning elodea infestation subject to boat transmission in the state. Less frequented are the Eyak River (8), Eyak Lake (6), and Alaganik Slough (3). Relatively speaking, these frequencies in the Cordova area are large relative to the population of boaters in this area. 
 
 Table: Respondent count for boat owners who took their boat into elodea infested waterbodies in 2018, n=51
@@ -425,6 +425,18 @@ elodeaLocFreq <- features4%>%
 
 knitr::kable(elodeaLocFreq, caption = "Count of respondents visiting waterbodies with known elodea infestations in 2018, n=51")%>%
   kableExtra::kable_styling()
+
+# of individual boaters who reported to have been in elodea infestations
+resCount <- features4%>%
+  distinct(responseID, .keep_all=T)%>%  #Note, important to set the dot in front of keep_all!!!
+  filter(location!="I cannot remember"&location!=""&location!="Campbell Lake")%>%
+  filter(wasInElodea=="Yes")%>%
+  select(responseID, elodeaLoc1, elodeaLoc2, elodeaLoc3)%>% 
+  gather(type, value=location, elodeaLoc1, elodeaLoc2, elodeaLoc3)%>%
+  
+  summarise(resCount = n_distinct(responseID))#taking out blanks and
+resCount
+
 ```
 
 ###2.1 Elodea transmission risk map
@@ -462,173 +474,6 @@ clickMap1 <- leaflet(elodeaTRUE, width = "100%", height = 500) %>%
     options = layersControlOptions(collapsed = FALSE)
   )
 clickMap1
-```
-
-Analysis of the routes taken by respondents who indicated to have boated outside Alaska first before bringing their boat to Alaska freshwater showed that boats were taken to Skilak Lake, Tustumena Lake, the Susitna River out of Talkeetna going North, and the Chena River. There is also one route in marine waters in Port of Valdez and Southeast Alaska. 
-
-Figure: Map of boat routes taken by boaters who first boated outside Alaska in 2018, n=4
-```{r}
-#importing elodea presence data, and boating tracks
-library(geojsonio)
-library(leaflet)
-
-
-freshOutside <- geojson_read("boater_app/data/FreshOutside.geojson",what = "sp")
-Alltracks <- geojson_read("boater_app/data/map.geojson",what = "sp")
-
-#Interactive layer display
-clickMap2 <- leaflet(freshOutside, width = "100%", height = 600) %>%
-  setView(-147.3, 62.0, zoom = 5)%>%
-  #Base groups
-  addTiles(group = "OpenStreetMap") %>%
-  addProviderTiles(providers$Esri.WorldTopoMap, group = "Esri Topo")%>%
-  addProviderTiles(providers$Esri.WorldImagery, group = "Esri Image")%>%
-  #Overlay groups
-  addPolylines(data=Alltracks, stroke = TRUE, color = "#2c7bb6", weight = 2,
-               opacity = 1.0, fill = FALSE, group = "All boat tracks (blue)")%>%
-  addPolylines(data=freshOutside, stroke = TRUE, color = "#d7191c", weight = 2,
-               opacity = 1.0, fill = FALSE, group = "Boaters who came from outside Alaska (red)")%>%
-  #Layers control
-  addLayersControl(
-    baseGroups = c("Esri Topo", "Esri Image","OpenStreetMap"),
-    overlayGroups = c("All boat tracks (blue)","Boaters who came from outside Alaska (red)"),
-    options = layersControlOptions(collapsed = FALSE)
-  )
-clickMap2
-```
-
-Alaska boat owners' concerns related to AIS impact on sport fishing are highest followed by biodiversity , subsistence, and recreation values, as shown by the median rank in the next Table. Respondents were less concerned about impacts on businesses, real estate, and commercial fishing as well as boating safety.
-
-Table: Descriptive statistics related to respondents' rating of concern for AIS affecting specific sectors, n=372
-```{r}
-concSummary <- features4 %>%
-  distinct(responseID, .keep_all=T)%>%
-  select(sportfishConc,boatingSafetyConc,recValueConc,businessConc,realEstateConc,subsistConc,biodivConc,commFishConc) # select variables to summarise
-
-tidyCon <- summarytools::descr(concSummary, stats = c("min","med","max","pct.valid"))
-Statistic <- row.names(tidyCon) # extracting row names from the matrix above
-tidyCon<- data.frame(tidyCon)%>% 
-  mutate_at(1:8, funs(round(.,0)))
-tidyCon <-cbind(Statistic, tidyCon) #adding variable names back in
-
-names(tidyCon)[names(tidyCon)=="sportfishConc"] <- "Sport fishing"#renaming column
-names(tidyCon)[names(tidyCon)=="boatingSafetyConc"] <- "Boating safety"
-names(tidyCon)[names(tidyCon)=="recValueConc"] <- "Recreation value"
-names(tidyCon)[names(tidyCon)=="businessConc"] <- "Businesses"
-names(tidyCon)[names(tidyCon)=="realEstateConc"] <- "Real estate values"
-names(tidyCon)[names(tidyCon)=="subsistConc"] <- "Subsistence"
-names(tidyCon)[names(tidyCon)=="biodivConc"] <- "Biodiversity"
-names(tidyCon)[names(tidyCon)=="commFishConc"] <- "Commercial fishing"
-
-knitr::kable(tidyCon, caption = "Descriptive statistics related to respondents' rating of concern for AIS affecting specific sectors, n=372")%>%
-  kableExtra::kable_styling()
-```
-
-
-###2.2 Alaska boat owners' boating and boat purchases occurring outside of Alaska
-
-The survey also contained questions on the purchase of boats from outside of Alaska and whether Alaska boat owners boated outside Alaska before putting their boat into Alaska freshwater in 2018. Only four respondents (less than 1% of respondents reporting, n=311) indicated to have boated outside of Alaska in 2018 before bringing their boat to Alaska. One respondent brought a boat used in Kansas, a state with known zebra mussle (*Dreissena polymorpha*) infestations. Other outside locations included Washington state, and British Columbia and the Yukon Territories (Table). 
-
-Table: Boat owner count for owners who took their boat out of state before boating in Alaska in 2018
-```{r}
-#Total distance, total trips, total respondents, and weighted average distance per trip by age group in the personal user group
-outsidersSummary <- features4%>%
-  group_by(locOutside, freshOutside)%>%
-  summarise(count = n_distinct(responseID),
-            percentOfN = count/333)%>%
-  na.omit()
-
-knitr::kable(outsidersSummary, caption = "Percentage of boat owners boating outside of Alaska in 2018")%>%
-  kableExtra::kable_styling()
-```
-
-Boat owners who take their boats outside of Alaska are more likely to bring AIS into Alaska. We compared the characteristics of boat owners who take their boats outside of Alaska (Table) with the average boat owner responding to the survey (Table). Due to the small sample size of outside boaters, we caution the reader to place too much emphasis on the results.  Outside boaters showed lower mean income, are perhaps retired, but operate slightly more expensive boats as shown by the higher than average hourly operating cost. Also, these boat owners had shorter the average annual boating distances.   
-
-Table: Boat owner characteristics who boated outside Alaska before boating in Alaska
-```{r}
-outsideSummary <- features4 %>%
-  distinct(responseID, .keep_all=T)%>%
-  filter(freshOutside=="Yes")%>%
-  select(Income, age, pax, routeCount,totalKmPre,hCost, YrCostPre, totalTripsPre, totalTripsPost) # select variables to summarise
-
-Summary <- summarytools::descr(outsideSummary, stats = c("mean", "sd", "cv","min","q1","med","q3","max","pct.valid"))
-Statistic <- row.names(Summary) # extracting row names from the matrix above
-Summary<- data.frame(Summary)%>% 
-  mutate_at(1:9, funs(round(.,0)))
-Summary <-cbind(Statistic, Summary) #adding variable names back in
-
-names(Summary)[names(Summary)=="age"] <- "Age"#renaming misspelled column
-names(Summary)[names(Summary)=="hCost"] <- "Operating cost $/h"
-names(Summary)[names(Summary)=="YrCostPre"] <- "Operating cost $/year"
-names(Summary)[names(Summary)=="totalTripsPre"] <- "Trips/year"
-names(Summary)[names(Summary)=="totalKmPre"] <- "Km/year"
-names(Summary)[names(Summary)=="totalTripsPost"] <- "Trips/year contingent"
-names(Summary)[names(Summary)=="pax"] <- "Passengers"
-names(Summary)[names(Summary)=="routeCount"] <- "Number of unique routes"
-
-knitr::kable(Summary, caption = "Summary statistics for operators who took their boats outside Alaska in 2018, n=4")%>%
-  kableExtra::kable_styling()
-```
-
-Additional analysis was conducted regarding the number of boats purchased outside Alaska, when and where these boats were purchased and whether they were purchased used or new. Since the survey asked about historical information, this question is most likely biased in terms of whether respondents remembered correctly. This bias may have resulted in underreported purchases that occurred farther in the past and may have contributed to the increase in  purchases shown in the Figure below. If we ignore this recall bias, it appears that there is an increased influx of used boats from outside Alaska that comprise significant AIS risk. 
-
-Figure: Reported historical purchase of boats from outside Alaska
-```{r}
-purOutside <- data6%>%
-  filter(purchaseOutside=="Yes")%>%
-  group_by(purchaseType,purchaseYear)%>%
-  summarise(count = n())
-
-h1 <- purOutside
-h2 <- expand.grid(purchaseType=unique(h1$purchaseType), purchaseYear=1982:2018)
-h3 <- merge(h2,h1, by.x=c("purchaseType", "purchaseYear"),by.y=c("purchaseType", "purchaseYear"), all.x = TRUE)
-h3[is.na(h3)]<-0
-
-h3plot <- ggplot(h3, aes(x = purchaseYear, y = count, fill = purchaseType)) +
-  geom_bar(stat = 'identity', aes(fill = purchaseType)) +
-  labs(x="Year",y="Count", title="Historical purchases of boats from outside Alaska, n=459") + 
-  scale_fill_discrete(name = "Purchase type") + theme_bw()
-h3plot
-```
-
-Boats that are operating in Alaska and were purchased out of state are originating all across the lower 48 with some originating in Canadian provinces and territories. Most concerning are used boats purchased in mussle infested states such as Michigan, Wisconsin, Indiana, Kansas, Texas, and Colorado (Figure). Due to the analysis being based on a survey and not a census of Alaska boat owners, the map below shows only a 2018 snapshot for a selection of boat owners responding to the survey. Likely, used boats are purchased by Alaska's registered boat owners from all lower 48 states and Canadian provinces and territories.  
-
-Map: States where boats were purchased by type of purchase
-```{r}
-purLoc <- data6%>%
-  filter(purchaseOutside=="Yes")%>%
-  group_by(purchaseLoc,purchaseType)%>%
-  summarise(n = n())%>%
-  mutate(percent = n/sum(n))
-#eliminating unknown locations
-purLoc <- purLoc[!purLoc$purchaseLoc=="Not known",]
-
-purLoc <- subset(purLoc, select = -n) #cleaning up columns no longer needed
-  purLoc<-purLoc%>%
-  spread(key=purchaseType, value=percent)
-
-#adding georeferences
-locs_center <- read.csv("reference_tables/locs_center.csv", stringsAsFactors = F)
-purLocGeo <- purLoc%>%
-  left_join(locs_center, by=c("purchaseLoc"="state"))
-purLocGeo[is.na(purLocGeo)] <- 0
-
-#Minichart map for proportion of used new boats being bought
-library(leaflet)
-
-basemap <- leaflet(width = "80%", height = "650px") %>%
-  addTiles()%>%
-  addProviderTiles(providers$OpenStreetMap.Mapnik)
-
-colors <- c("#1b9e77","#d95f02","#7570b3")
-
-basemap %>%
-  addMinicharts(
-    purLocGeo$long, purLocGeo$lat,
-    type = "pie",
-    chartdata = purLocGeo[, c("New","Not known","Used")], 
-    colorPalette = colors, 
-    width = 50 , transitionTime = 0)
 ```
 
 ###2.3 Clean Drain Dry 
@@ -676,6 +521,153 @@ ggplot(pers3, aes(age, totalKmPre, colour = Clean)) +
   geom_hline(aes(yintercept = 0)) + ylim(0,2000) + ylab("km / year")+
   labs(colour = "CleanDrainDry") + scale_color_manual(values=theme) +theme_bw()
 ```
+
+
+Analysis of the routes taken by respondents who indicated to have boated outside Alaska first before bringing their boat to Alaska freshwater showed that boats were taken to Skilak Lake, Tustumena Lake, the Susitna River out of Talkeetna going North, and the Chena River. There is also one route in marine waters in Port of Valdez and Southeast Alaska. 
+
+Figure: Map of boat routes taken by boaters who first boated outside Alaska in 2018, n=4
+```{r}
+#importing elodea presence data, and boating tracks
+library(geojsonio)
+library(leaflet)
+
+
+freshOutside <- geojson_read("boater_app/data/FreshOutside.geojson",what = "sp")
+Alltracks <- geojson_read("boater_app/data/map.geojson",what = "sp")
+
+#Interactive layer display
+clickMap2 <- leaflet(freshOutside, width = "100%", height = 600) %>%
+  setView(-147.3, 62.0, zoom = 5)%>%
+  #Base groups
+  addTiles(group = "OpenStreetMap") %>%
+  addProviderTiles(providers$Esri.WorldTopoMap, group = "Esri Topo")%>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Esri Image")%>%
+  #Overlay groups
+  addPolylines(data=Alltracks, stroke = TRUE, color = "#2c7bb6", weight = 2,
+               opacity = 1.0, fill = FALSE, group = "All boat tracks (blue)")%>%
+  addPolylines(data=freshOutside, stroke = TRUE, color = "#d7191c", weight = 2,
+               opacity = 1.0, fill = FALSE, group = "Boaters who came from outside Alaska (red)")%>%
+  #Layers control
+  addLayersControl(
+    baseGroups = c("Esri Topo", "Esri Image","OpenStreetMap"),
+    overlayGroups = c("All boat tracks (blue)","Boaters who came from outside Alaska (red)"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+clickMap2
+```
+
+
+
+
+###2.2 Alaska boat owners' boating and boat purchases occurring outside of Alaska
+
+The survey also contained questions on the purchase of boats from outside of Alaska and whether Alaska boat owners boated outside Alaska before putting their boat into Alaska freshwater in 2018. Only four respondents (less than 1% of respondents reporting, n=311) indicated to have boated outside of Alaska in 2018 before bringing their boat to Alaska. One respondent brought a boat used in Kansas, a state with known zebra mussle (*Dreissena polymorpha*) infestations. Other outside locations included Washington state, and British Columbia and the Yukon Territories (Table). 
+
+Table: Boat owner count for owners who took their boat out of state before boating in Alaska in 2018
+```{r}
+#Total distance, total trips, total respondents, and weighted average distance per trip by age group in the personal user group
+outsidersSummary <- features4%>%
+  group_by(locOutside, freshOutside)%>%
+  summarise(count = n_distinct(responseID),
+            percentOfN = count/333)%>%
+  na.omit()
+
+knitr::kable(outsidersSummary, caption = "Percentage of boat owners boating outside of Alaska in 2018")%>%
+  kableExtra::kable_styling()
+```
+
+
+Additional analysis was conducted regarding the number of boats purchased outside Alaska, when and where these boats were purchased and whether they were purchased used or new. Since the survey asked about historical information, this question is most likely biased in terms of whether respondents remembered correctly. This bias may have resulted in underreported purchases that occurred farther in the past and may have contributed to the increase in  purchases shown in the Figure below. If we ignore this recall bias, it appears that there is an increased influx of used boats from outside Alaska that comprise significant AIS risk. 
+
+Figure: Reported historical purchase of boats from outside Alaska
+```{r}
+purOutside <- data6%>%
+  filter(purchaseOutside=="Yes")%>%
+  group_by(purchaseType,purchaseYear)%>%
+  summarise(count = n())
+
+h1 <- purOutside
+h2 <- expand.grid(purchaseType=unique(h1$purchaseType), purchaseYear=1982:2018)
+h3 <- merge(h2,h1, by.x=c("purchaseType", "purchaseYear"),by.y=c("purchaseType", "purchaseYear"), all.x = TRUE)
+h3[is.na(h3)]<-0
+
+h3plot <- ggplot(h3, aes(x = purchaseYear, y = count, fill = purchaseType)) +
+  geom_bar(stat = 'identity', aes(fill = purchaseType)) +
+  labs(x="Year",y="Count", title="Historical purchases of boats from outside Alaska, n=43") + 
+  scale_fill_discrete(name = "Purchase type") + theme_bw()
+h3plot
+```
+
+Boats that are operating in Alaska and were purchased out of state are originating all across the lower 48 with some originating in Canadian provinces and territories. Most concerning are used boats purchased in mussle infested states such as Michigan, Wisconsin, Indiana, Kansas, Texas, and Colorado (Figure). Due to the analysis being based on a survey and not a census of Alaska boat owners, the map below shows only a 2018 snapshot for a selection of boat owners responding to the survey. Likely, used boats are purchased by Alaska's registered boat owners from all lower 48 states and Canadian provinces and territories.  
+
+Map: States where boats were purchased by type of purchase
+```{r}
+purLoc <- data6%>%
+  filter(purchaseOutside=="Yes")%>%
+  group_by(purchaseLoc,purchaseType)%>%
+  summarise(n = n())%>%
+  mutate(percent = n/sum(n))
+#eliminating unknown locations
+purLoc <- purLoc[!purLoc$purchaseLoc=="Not known",]
+
+purLoc <- subset(purLoc, select = -n) #cleaning up columns no longer needed
+  purLoc<-purLoc%>%
+  spread(key=purchaseType, value=percent)
+
+#adding georeferences
+locs_center <- read.csv("reference_tables/locs_center.csv", stringsAsFactors = F)
+purLocGeo <- purLoc%>%
+  left_join(locs_center, by=c("purchaseLoc"="state"))
+purLocGeo[is.na(purLocGeo)] <- 0
+
+#Minichart map for proportion of used new boats being bought
+library(leaflet)
+
+basemap <- leaflet(width = "100%", height = "650px") %>%
+  addTiles()%>%
+  addProviderTiles(providers$OpenStreetMap.Mapnik)
+
+colors <- c("#1b9e77","#d95f02","#7570b3")
+
+basemap %>%
+  addMinicharts(
+    purLocGeo$long, purLocGeo$lat,
+    type = "pie",
+    chartdata = purLocGeo[, c("New","Not known","Used")], 
+    colorPalette = colors, 
+    width = 50 , transitionTime = 0)
+```
+
+
+
+Boat owners who take their boats outside of Alaska are more likely to bring AIS into Alaska. We compared the characteristics of boat owners who take their boats outside of Alaska (Table) with the average boat owner responding to the survey (Table). Due to the small sample size of outside boaters, we caution the reader to place too much emphasis on the results.  Outside boaters showed lower mean income, are perhaps retired, but operate slightly more expensive boats as shown by the higher than average hourly operating cost. Also, these boat owners had shorter the average annual boating distances.   
+
+Table: Boat owner characteristics who boated outside Alaska before boating in Alaska
+```{r}
+outsideSummary <- features4 %>%
+  distinct(responseID, .keep_all=T)%>%
+  filter(freshOutside=="Yes")%>%
+  select(Income, age, pax, routeCount,totalKmPre,hCost, YrCostPre, totalTripsPre, totalTripsPost) # select variables to summarise
+
+Summary <- summarytools::descr(outsideSummary, stats = c("mean", "sd", "cv","min","q1","med","q3","max","pct.valid"))
+Statistic <- row.names(Summary) # extracting row names from the matrix above
+Summary<- data.frame(Summary)%>% 
+  mutate_at(1:9, funs(round(.,0)))
+Summary <-cbind(Statistic, Summary) #adding variable names back in
+
+names(Summary)[names(Summary)=="age"] <- "Age"#renaming misspelled column
+names(Summary)[names(Summary)=="hCost"] <- "Operating cost $/h"
+names(Summary)[names(Summary)=="YrCostPre"] <- "Operating cost $/year"
+names(Summary)[names(Summary)=="totalTripsPre"] <- "Trips/year"
+names(Summary)[names(Summary)=="totalKmPre"] <- "Km/year"
+names(Summary)[names(Summary)=="totalTripsPost"] <- "Trips/year contingent"
+names(Summary)[names(Summary)=="pax"] <- "Passengers"
+names(Summary)[names(Summary)=="routeCount"] <- "Number of unique routes"
+
+knitr::kable(Summary, caption = "Summary statistics for operators who took their boats outside Alaska in 2018, n=4")%>%
+  kableExtra::kable_styling()
+```
+
 
 
 
@@ -752,6 +744,36 @@ names(tidySummary)[names(tidySummary)=="routeCount"] <- "Number of unique routes
 knitr::kable(tidySummary, caption = "Summary statistics for personal operators with mapping answers, n=324")%>%
   kableExtra::kable_styling()
 ```
+
+
+## Stated boat owners' concerns about AIS impact in Alaska
+Alaska boat owners' concerns related to AIS impact on sport fishing are highest followed by biodiversity , subsistence, and recreation values, as shown by the median rank in the next Table. Respondents were less concerned about impacts on businesses, real estate, and commercial fishing as well as boating safety.
+
+Table: Descriptive statistics related to respondents' rating of concern for AIS affecting specific sectors, n=372
+```{r}
+concSummary <- features4 %>%
+  distinct(responseID, .keep_all=T)%>%
+  select(sportfishConc,boatingSafetyConc,recValueConc,businessConc,realEstateConc,subsistConc,biodivConc,commFishConc) # select variables to summarise
+
+tidyCon <- summarytools::descr(concSummary, stats = c("min","med","max","pct.valid"))
+Statistic <- row.names(tidyCon) # extracting row names from the matrix above
+tidyCon<- data.frame(tidyCon)%>% 
+  mutate_at(1:8, funs(round(.,0)))
+tidyCon <-cbind(Statistic, tidyCon) #adding variable names back in
+
+names(tidyCon)[names(tidyCon)=="sportfishConc"] <- "Sport fishing"#renaming column
+names(tidyCon)[names(tidyCon)=="boatingSafetyConc"] <- "Boating safety"
+names(tidyCon)[names(tidyCon)=="recValueConc"] <- "Recreation value"
+names(tidyCon)[names(tidyCon)=="businessConc"] <- "Businesses"
+names(tidyCon)[names(tidyCon)=="realEstateConc"] <- "Real estate values"
+names(tidyCon)[names(tidyCon)=="subsistConc"] <- "Subsistence"
+names(tidyCon)[names(tidyCon)=="biodivConc"] <- "Biodiversity"
+names(tidyCon)[names(tidyCon)=="commFishConc"] <- "Commercial fishing"
+
+knitr::kable(tidyCon, caption = "Descriptive statistics related to respondents' rating of concern for AIS affecting specific sectors, n=372")%>%
+  kableExtra::kable_styling()
+```
+
 
 ##Boat operating cost
 
