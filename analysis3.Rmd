@@ -17,7 +17,6 @@ library(geojson)
 library(leaflet)
 library(dplyr)
 library(tidyr)
-library(Hmisc)
 library(ggplot2)
 library(RColorBrewer)
 library(stringr)
@@ -25,13 +24,13 @@ library(summarytools)
 library(stats)
 library(leaflet.minicharts)
 
-#features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
-features <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+features <- read.csv("D:/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
+#features <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/features.csv", stringsAsFactors = FALSE)
 names(features)[names(features)=="LenghtKM"] <- "km"#renaming misspelled column
 freqCoding <- read.csv("reference_tables/freqCoding.csv", stringsAsFactors = FALSE) #this file was created to quickly recode trip frequencies
 
-#data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
-data <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
+data <- read.csv("D:/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
+#data <- read.csv("C:/Users/Toby/Dropbox/DATA/2018_boat_survey/data.csv", stringsAsFactors = FALSE)
 ```
 
 Clean and mutate features.csv
@@ -432,8 +431,8 @@ resCount <- features4%>%
   filter(location!="I cannot remember"&location!=""&location!="Campbell Lake")%>%
   filter(wasInElodea=="Yes")%>%
   select(responseID, elodeaLoc1, elodeaLoc2, elodeaLoc3)%>% 
-  gather(type, value=location, elodeaLoc1, elodeaLoc2, elodeaLoc3)%>%
-  
+  gather(type, value=location, elodeaLoc1, elodeaLoc2, elodeaLoc3)
+
   summarise(resCount = n_distinct(responseID))#taking out blanks and
 resCount
 

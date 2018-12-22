@@ -5,6 +5,8 @@ library(dygraphs)
 library(xts)
 library(leaflet)
 library(geojsonio)
+library(dplyr)
+library(ggplot2)
 
 data <- read.csv("data/featuresApp.csv")
 #map <- readOGR("data/Boater_Joined_2/Boater_Joined_2.shp")
@@ -38,9 +40,9 @@ server <- function(input, output){
   output$histogram <- renderPlot({
     dataHisto <- NULL
     dataHisto <- select(data,input$variableselected)
-    xname <- input$variableselected
-    hist(dataHisto, main="Histogram for selected variable") 
-     
+     d <- as.numeric(dataHisto[,1])
+     hist(d, main="Histogram for selected variable") 
+  
       })
   
   output$map <- renderLeaflet({
@@ -57,7 +59,8 @@ server <- function(input, output){
     
     labels <- sprintf("%s: %g", map$responseID, map$variableplot) %>% lapply(htmltools::HTML) # CHANGE map$cases by map$variableplot
     
-    l <- leaflet(map) %>% addTiles() %>% addProviderTiles("Esri")%>% addPolylines(
+    l <- leaflet(map) %>% 
+      addTiles() %>% addProviderTiles("Esri")%>% addPolylines(
       stroke = TRUE, 
       color = ~pal(variableplot), #"green"
       weight = 2,
